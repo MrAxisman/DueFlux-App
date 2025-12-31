@@ -1,0 +1,49 @@
+{
+  "expo": {
+    "name": "DueFlux",
+    "slug": "dueflux-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "platforms": [
+      "android",
+      "ios"
+    ],
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0b1120"
+    },
+    "updates": {
+      "fallbackToCacheTimeout": 0
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.dueflux.app",
+      "googleServicesFile": "./GoogleService-Info.plist",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0b1120"
+      },
+      "package": "com.dueflux.app",
+      "googleServicesFile": "./google-services.json"
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "e63bda01-dd05-49dd-bd52-c1db9776d870"
+      }
+    },
+    "owner": "mr_axisman"
+  }
+}

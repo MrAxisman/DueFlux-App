@@ -1,0 +1,29 @@
+<svg width="80" height="60" viewBox="0 0 80 60" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="dfGrad3" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#22D3EE"/>
+      <stop offset="45%" stop-color="#4F46E5"/>
+      <stop offset="100%" stop-color="#A855F7"/>
+    </linearGradient>
+  </defs>
+
+  <path d="
+    M20 18
+    L40 18
+    Q52 18 52 30
+    Q52 42 40 42
+    L20 42
+
+    M40 18
+    L40 42
+
+    M52 30
+    L62 30
+  "
+    fill="none"
+    stroke="url(#dfGrad3)"
+    stroke-width="4"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>

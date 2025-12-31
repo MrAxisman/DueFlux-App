@@ -1,0 +1,39 @@
+name: Desktop macOS Build
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "DueFlux_app_desktop/**"
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: DueFlux_app_desktop/Windows/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: DueFlux_app_desktop/Windows
+
+      - name: Build macOS (DMG + ZIP)
+        run: npm run build:mac
+        working-directory: DueFlux_app_desktop/Windows
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dueflux-desktop-macos
+          path: |
+            DueFlux_app_desktop/Windows/dist/*.dmg
+            DueFlux_app_desktop/Windows/dist/*.zip

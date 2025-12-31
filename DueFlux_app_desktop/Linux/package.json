@@ -1,0 +1,90 @@
+{
+  "name": "dueflux-desktop",
+  "version": "0.1.0",
+  "description": "DueFlux - desktop client (Electron)",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:win": "electron-builder --win --x64",
+    "build:linux": "electron-builder --linux",
+    "build:mac": "electron-builder --mac",
+    "pack": "electron-builder --dir",
+    "release:win": "electron-builder --win --x64 --publish always",
+    "release:linux": "electron-builder --linux --publish always",
+    "release:mac": "electron-builder --mac --publish always",
+    "release": "electron-builder --publish always"
+  },
+  "dependencies": {
+    "electron-log": "^5.1.2",
+    "electron-updater": "^6.3.0"
+  },
+  "devDependencies": {
+    "@electron/notarize": "^2.3.2",
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MrAxisman/DueFlux-App.git"
+  },
+  "build": {
+    "appId": "com.dueflux.desktop",
+    "productName": "DueFlux",
+    "afterSign": "scripts/notarize.js",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "package.json"
+    ],
+    "asar": false,
+    "win": {
+      "artifactName": "DueFlux-Windows.${ext}",
+      "target": [
+        "nsis",
+        "zip"
+      ]
+    },
+    "linux": {
+      "artifactName": "DueFlux-Linux.${ext}",
+      "target": [
+        "AppImage",
+        "tar.gz"
+      ],
+      "category": "Office"
+    },
+    "mac": {
+      "artifactName": "DueFlux-macOS.${ext}",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "category": "public.app-category.business",
+      "hardenedRuntime": true,
+      "entitlements": "entitlements.mac.plist",
+      "entitlementsInherit": "entitlements.mac.inherit.plist",
+      "gatekeeperAssess": false
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "MrAxisman",
+        "repo": "DueFlux-App",
+        "releaseType": "release"
+      }
+    ]
+  }
+}

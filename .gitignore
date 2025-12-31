@@ -1,0 +1,42 @@
+# Public apps repo: exclude private site/backend + secrets
+DueFlux_website/
+functions/
+Privacy Policy & Terms & Conditions.docx
+.firebaserc
+firebase.json
+firestore.rules
+dueflux-product-firebase-adminsdk-*.json
+
+# Node / build artifacts
+**/node_modules/
+**/dist/
+**/build/
+**/out/
+**/release/
+**/*.blockmap
+**/.expo/
+**/.expo-shared/
+DueFlux_app_mobile/expo/android/
+DueFlux_app_mobile/expo/ios/
+**/npm-debug.log*
+**/yarn-error.log*
+**/*.log
+
+# Editor / OS
+**/.DS_Store
+**/Thumbs.db
+**/.idea/
+**/.vscode/
+**/.write-test
+
+# Env / signing secrets
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/*.cer
+**/*.mobileprovision
+**/*.keystore
+**/*.jks

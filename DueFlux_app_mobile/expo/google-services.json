@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "71833659340",
+    "project_id": "dueflux-product",
+    "storage_bucket": "dueflux-product.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:71833659340:android:f9004fc9925a0551a51f69",
+        "android_client_info": {
+          "package_name": "com.dueflux.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCszvcsZ7VSIkLLfJIhpBOguxfuGfEEm2o"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

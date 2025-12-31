@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <title>DueFlux</title>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0"
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="offline-banner" class="offline-banner hidden">
+      <div class="dot"></div>
+      <p id="offline-text">Internet connection required. DueFlux is online-only.</p>
+    </div>
+
+    <!-- SPLASH / INTRO -->
+    <div id="splash" class="screen splash-screen">
+      <div class="splash-content">
+        <div id="splash-logo" class="logo-wrap big"></div>
+        <h1 class="splash-title">DueFlux</h1>
+        <p id="splash-subtitle" class="splash-subtitle">
+          Unified invoices for home &amp; business.
+        </p>
+        <div class="splash-loader">
+          <div class="bar"></div>
+        </div>
+        <p id="splash-status" class="splash-status">
+          Loading engine...
+        </p>
+      </div>
+    </div>
+
+    <!-- LOGIN SCREEN -->
+    <div id="login-screen" class="screen hidden">
+      <div class="login-card" id="login-card">
+        <div class="login-header">
+          <div id="login-logo" class="logo-wrap small"></div>
+          <div>
+            <h1 id="login-title">DueFlux</h1>
+            <p id="login-subtitle">
+              Secure invoices for families &amp; business.
+            </p>
+          </div>
+        </div>
+
+        <div class="login-toolbar">
+          <div class="login-toolbar-left">
+            <p id="login-hint" class="login-hint">
+              Press <strong>Enter</strong> to submit, or use the button.
+              Missing fields will be highlighted.
+            </p>
+          </div>
+          <div class="login-toolbar-right">
+            <select id="lang-select">
+              <option value="ro">Română</option>
+              <option value="hu">Magyar</option>
+              <option value="de">Deutsch</option>
+              <option value="fr">Français</option>
+              <option value="en">English</option>
+              <option value="it">Italiano</option>
+              <option value="tr">Türkçe</option>
+              <option value="zh">中文</option>
+              <option value="ar">العربية</option>
+              <option value="ru">Русский</option>
+              <option value="es">Español</option>
+              <option value="ja">日本語</option>
+            </select>
+            <button id="theme-toggle" class="icon-btn" type="button">🌙</button>
+          </div>
+        </div>
+
+        <!-- LOGIN PANEL -->
+        <div id="auth-login" class="auth-panel">
+          <label id="login-email-label" class="field-label" for="login-email">Email</label>
+          <input
+            id="login-email"
+            type="email"
+            autocomplete="email"
+            placeholder="you@mail.com"
+          />
+
+          <label id="login-password-label" class="field-label" for="login-password">Password</label>
+          <div class="password-row">
+            <input
+              id="login-password"
+              type="password"
+              autocomplete="current-password"
+              placeholder="*******"
+            />
+            <button
+              id="login-pass-toggle"
+              type="button"
+              class="icon-btn small"
+              title="Show/Hide"
+            >
+              👁
+            </button>
+          </div>
+
+          <button
+            id="btn-login"
+            class="primary-btn"
+            type="button"
+            data-online-only="true"
+          >
+            Login
+          </button>
+        </div>
+
+        <div class="login-signup">
+          <span id="login-signup-cta"
+            >Don't have an account? Create it on the DueFlux website.</span
+          >
+          <a
+            id="login-signup-link"
+            class="link-inline"
+            href="#"
+            target="_blank"
+            rel="noreferrer"
+            >Create account on website</a
+          >
+        </div>
+
+        <div id="login-message" class="login-message"></div>
+      </div>
+    </div>
+
+    <!-- APP SCREEN -->
+    <div id="app-screen" class="hidden">
+      <!-- HEADER -->
+      <header class="app-header">
+        <div class="left">
+          <div id="app-logo" class="logo-wrap tiny"></div>
+          <div class="app-brand">
+            <div class="app-title">DueFlux</div>
+            <div id="app-tagline" class="app-subtitle">
+              Unified invoices for home &amp; business.
+            </div>
+          </div>
+        </div>
+        <div class="right">
+          <button
+            id="theme-toggle-app"
+            type="button"
+            class="icon-btn"
+            title="Theme"
+          >
+            🌙
+          </button>
+          <button
+            id="btn-settings"
+            type="button"
+            class="icon-btn"
+            title="Settings"
+          >
+            ⚙️
+          </button>
+          <button id="profile-trigger" type="button" class="user-pill">
+            <span id="user-name">User</span>
+            <span id="user-plan" class="plan-badge">BASIC</span>
+          </button>
+          <button id="btn-switch-account" type="button" class="ghost-btn">
+            Switch
+          </button>
+          <button id="btn-logout" type="button" class="ghost-btn">
+            Logout
+          </button>
+        </div>
+      </header>
+
+      <!-- MAIN CONTENT -->
+      <main class="app-main">
+        <!-- KPIs + SECURITY -->
+        <div class="app-row">
+          <section class="card kpis">
+            <h3 id="kpi-title">Overview</h3>
+            <div class="kpi-grid">
+              <div class="kpi">
+                <span id="kpi-label-total" class="kpi-label">Total this month</span>
+                <div id="kpi-total" class="kpi-value">0.00 RON</div>
+              </div>
+              <div class="kpi">
+                <span id="kpi-label-unpaid" class="kpi-label">Unpaid</span>
+                <div id="kpi-unpaid" class="kpi-value">0</div>
+              </div>
+              <div class="kpi">
+                <span id="kpi-label-overdue" class="kpi-label">Overdue</span>
+                <div id="kpi-overdue" class="kpi-value">0</div>
+              </div>
+            </div>
+          </section>
+
+          <section class="card full">
+            <h3 id="security-title">Email verification</h3>
+            <p id="security-subtitle" class="small muted">
+              Verify your email on the DueFlux website to use the desktop app.
+            </p>
+            <div id="totp-status" class="totp-status"></div>
+          </section>
+        </div>
+
+        <!-- INVOICES TABLE -->
+        <section class="card full">
+          <div class="table-header">
+            <h3 id="invoices-title">Invoices</h3>
+            <div>
+              <button
+                id="btn-sync"
+                type="button"
+                class="ghost-btn"
+                style="margin-right: 8px"
+                data-online-only="true"
+              >
+                Sync mail
+              </button>
+              <button
+                id="btn-add-invoice"
+                type="button"
+                class="primary-btn small"
+                data-online-only="true"
+              >
+                + Add invoice
+              </button>
+            </div>
+          </div>
+
+          <div id="mail-sync-panel" class="mail-sync-panel hidden">
+            <div class="mail-sync-row">
+              <div>
+                <p id="mail-sync-title" class="mail-sync-title">Invoice inbox</p>
+                <p id="mail-sync-desc" class="mail-sync-desc">
+                  Forward invoices to your personal DueFlux address.
+                </p>
+              </div>
+              <div class="mail-sync-actions">
+                <button id="mail-sync-copy" type="button" class="ghost-btn small">
+                  Copy address
+                </button>
+              </div>
+            </div>
+            <div class="mail-sync-row">
+              <span id="mail-sync-address" class="mail-sync-address">—</span>
+            </div>
+            <p id="mail-sync-status" class="mail-sync-status small muted"></p>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th id="th-company">Company</th>
+                  <th id="th-category">Category</th>
+                  <th id="th-number">Number</th>
+                  <th id="th-issue">Issue date</th>
+                  <th id="th-due">Due date</th>
+                  <th id="th-amount">Amount</th>
+                  <th id="th-status">Status</th>
+                  <th id="th-actions">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="tbl-invoices"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+
+      <!-- ADD INVOICE MODAL -->
+      <div id="modal-backdrop" class="modal-backdrop hidden">
+        <div class="modal">
+          <div class="modal-header">
+            <h3 id="modal-add-title">Add invoice</h3>
+            <button id="modal-close" class="icon-btn small" type="button">
+              ?
+            </button>
+          </div>
+          <div class="modal-body">
+            <label id="label-inv-company" class="field-label" for="inv-company">Company</label>
+            <input id="inv-company" type="text" />
+
+            <label id="label-inv-category" class="field-label" for="inv-category">Category</label>
+            <input id="inv-category" type="text" />
+
+            <label id="label-inv-number" class="field-label" for="inv-number">Number</label>
+            <input id="inv-number" type="text" />
+
+            <div class="grid-2">
+              <div>
+                <label id="label-inv-issue" class="field-label" for="inv-issue">Issue date</label>
+                <input id="inv-issue" type="date" />
+              </div>
+              <div>
+                <label id="label-inv-due" class="field-label" for="inv-due">Due date</label>
+                <input id="inv-due" type="date" />
+              </div>
+            </div>
+
+            <div class="grid-2">
+              <div>
+                <label id="label-inv-amount" class="field-label" for="inv-amount">Amount</label>
+                <input id="inv-amount" type="number" step="0.01" />
+              </div>
+              <div>
+                <label id="label-inv-currency" class="field-label" for="inv-currency">Currency</label>
+                <input id="inv-currency" type="text" placeholder="RON" />
+              </div>
+            </div>
+
+            <label id="label-inv-status" class="field-label" for="inv-status">Status</label>
+            <select id="inv-status">
+              <option value="unpaid">Unpaid</option>
+              <option value="paid">Paid</option>
+              <option value="overdue">Overdue</option>
+            </select>
+          </div>
+          <div class="modal-footer">
+            <button id="modal-cancel" type="button" class="ghost-btn">
+              Cancel
+            </button>
+            <button
+              id="modal-save"
+              type="button"
+              class="primary-btn small"
+              data-online-only="true"
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- TOTP MODAL REMOVED: email verification handled on website -->
+
+      <!-- ACCOUNT SWITCH MODAL -->
+      <div id="account-modal-backdrop" class="modal-backdrop hidden">
+        <div class="modal">
+          <div class="modal-header">
+            <h3 id="account-modal-title">Switch account</h3>
+            <button id="account-close" class="icon-btn small" type="button">
+              ?
+            </button>
+          </div>
+          <div class="modal-body">
+            <div id="account-list"></div>
+            <button
+              id="account-add"
+              class="text-btn"
+              type="button"
+              style="margin-top: 8px"
+            >
+              + Add another account
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- PROFILE MODAL -->
+      <div id="profile-backdrop" class="modal-backdrop hidden">
+        <div class="modal profile-modal">
+          <div class="modal-header profile-header">
+            <div>
+              <h3 id="profile-title">My profile</h3>
+              <p id="profile-subtitle" class="small muted">Account details and plan</p>
+            </div>
+            <div class="profile-plan-chip">
+              <span id="profile-plan-pill" class="plan-badge">BASIC</span>
+            </div>
+            <button id="profile-close" class="icon-btn small" type="button">?</button>
+          </div>
+
+          <div class="modal-body profile-body">
+            <div class="profile-section">
+              <h4 id="profile-plan-section-title">Your plan</h4>
+              <p id="profile-plan-note" class="small muted">Plans can be changed only on the DueFlux website.</p>
+              <div class="profile-plan-grid">
+                <div class="profile-plan-card" id="profile-basic-card">
+                  <div id="profile-basic-name" class="plan-name">Basic</div>
+                  <p id="profile-basic-desc" class="small muted">Full features for families, households and personal invoices.</p>
+                </div>
+                <div class="profile-plan-card" id="profile-business-card">
+                  <div id="profile-business-name" class="plan-name">Business</div>
+                  <p id="profile-business-desc" class="small muted">Full features for companies handling supplier invoices.</p>
+                </div>
+              </div>
+              <p id="profile-plan-device-note" class="small muted">All plans work on desktop and mobile.</p>
+              <div class="profile-links-row">
+                <span id="profile-plan-readonly" class="small muted">Plan changes are managed on the website.</span>
+                <a
+                  id="profile-manage-link"
+                  class="link-inline"
+                  href="#"
+                  target="_blank"
+                  rel="noreferrer"
+                  >Open website</a
+                >
+              </div>
+            </div>
+
+            <div class="profile-section">
+              <h4 id="profile-details-title">Identity</h4>
+              <div class="grid-2">
+                <div>
+                  <label class="field-label" for="profile-first" id="profile-first-label">First name</label>
+                  <input id="profile-first" type="text" />
+                </div>
+                <div>
+                  <label class="field-label" for="profile-last" id="profile-last-label">Last name</label>
+                  <input id="profile-last" type="text" />
+                </div>
+              </div>
+              <div class="form-row" id="profile-company-wrap">
+                <label class="field-label" for="profile-company" id="profile-company-label">Company name</label>
+                <input id="profile-company" type="text" />
+                <p id="profile-company-hint" class="small muted">Shown when your plan is Business.</p>
+              </div>
+              <div class="profile-actions">
+                <button
+                  id="profile-save"
+                  type="button"
+                  class="primary-btn small"
+                  data-online-only="true"
+                >
+                  Save changes
+                </button>
+              </div>
+            </div>
+
+            <div class="profile-section">
+              <h4 id="profile-password-title">Password</h4>
+              <p id="profile-password-body" class="small muted">
+                Change your password from the website for better security.
+              </p>
+              <a
+                id="profile-password-link"
+                class="link-inline"
+                href="#"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Change on website
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SETTINGS PANEL -->
+      <div id="settings-backdrop" class="settings-backdrop hidden">
+        <aside class="settings-panel">
+          <div class="settings-header">
+            <div class="settings-title-block">
+              <span class="settings-logo"></span>
+              <div>
+                <h2 id="settings-title">Settings</h2>
+                <p id="settings-subtitle" class="small muted">
+                  Personalize DueFlux for you.
+                </p>
+              </div>
+            </div>
+            <button
+              id="settings-close"
+              class="icon-btn small"
+              type="button"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div class="settings-section">
+            <h3 id="settings-appearance-title">Appearance</h3>
+            <p id="settings-theme-label" class="small subtitle">Theme</p>
+            <div class="settings-chip-row">
+              <button
+                id="settings-theme-dark"
+                type="button"
+                class="settings-chip active"
+              >
+                Dark
+              </button>
+              <button
+                id="settings-theme-light"
+                type="button"
+                class="settings-chip"
+              >
+                Light
+              </button>
+              <button
+                id="settings-theme-auto"
+                type="button"
+                class="settings-chip"
+              >
+                Auto
+              </button>
+            </div>
+            <p id="settings-theme-hint" class="small muted">
+              Auto follows your system preference (Windows, macOS, Linux,
+              mobile).
+            </p>
+          </div>
+
+          <div class="settings-section">
+            <h3 id="settings-display-title">Display</h3>
+            <button
+              id="settings-fullscreen-btn"
+              type="button"
+              class="ghost-btn fullwidth"
+            >
+              Enter fullscreen
+            </button>
+            <p id="settings-fullscreen-hint" class="small muted">
+              You can also press F11 while DueFlux is focused.
+            </p>
+          </div>
+
+          <div class="settings-section">
+            <h3 id="settings-language-title">Language</h3>
+            <div class="select-shell">
+              <select id="settings-language-select">
+              <option value="ro">Română</option>
+              <option value="hu">Magyar</option>
+              <option value="de">Deutsch</option>
+              <option value="fr">Français</option>
+              <option value="en">English</option>
+              <option value="it">Italiano</option>
+              <option value="tr">Türkçe</option>
+              <option value="zh">中文</option>
+              <option value="ar">العربية</option>
+              <option value="ru">Русский</option>
+              <option value="es">Español</option>
+              <option value="ja">日本語</option>
+            </select>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h3 id="settings-account-title">Account</h3>
+            <div class="settings-actions-row">
+              <button
+                id="settings-switch-account"
+                type="button"
+                class="ghost-btn"
+              >
+                Switch account
+              </button>
+              <button
+                id="settings-logout"
+                type="button"
+                class="ghost-btn danger"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h3 id="settings-updates-title">Updates</h3>
+            <p id="settings-updates-subtitle" class="small muted">
+              Keep DueFlux updated with the latest improvements.
+            </p>
+            <div class="settings-actions-row">
+              <button
+                id="settings-check-updates"
+                type="button"
+                class="ghost-btn"
+              >
+                Check for updates
+              </button>
+              <button
+                id="settings-install-update"
+                type="button"
+                class="primary-btn small hidden"
+              >
+                Install update
+              </button>
+            </div>
+            <p id="settings-update-version" class="small muted"></p>
+            <p id="settings-update-status" class="small muted"></p>
+          </div>
+
+          <div class="settings-section">
+            <h3 id="settings-legal-title">Legal</h3>
+            <div class="settings-links">
+              <button
+                id="settings-link-gdpr"
+                type="button"
+                class="linklike-btn"
+              >
+                GDPR &amp; Data protection
+              </button>
+              <button
+                id="settings-link-terms"
+                type="button"
+                class="linklike-btn"
+              >
+                Terms of Service
+              </button>
+              <button
+                id="settings-link-privacy"
+                type="button"
+                class="linklike-btn"
+              >
+                Privacy Policy
+              </button>
+            </div>
+          </div>
+
+          <p id="settings-footnote" class="settings-footnote small muted">
+            © 2025 DueFlux. Settings are stored locally on this device.
+          </p>
+        </aside>
+      </div>
+
+      <!-- LEGAL MODAL -->
+      <div id="legal-backdrop" class="modal-backdrop hidden">
+        <div class="modal">
+          <div class="modal-header">
+            <h3 id="legal-title">Legal</h3>
+            <button id="legal-x" type="button" class="icon-btn small">
+              ✕
+            </button>
+          </div>
+          <div id="legal-body" class="modal-body small">
+            <!-- text set from JS -->
+          </div>
+          <div class="modal-footer">
+            <button
+              id="legal-close-btn"
+              type="button"
+              class="ghost-btn"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
