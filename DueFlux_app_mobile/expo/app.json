@@ -9,11 +9,6 @@
       "ios"
     ],
     "icon": "./assets/icon.png",
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#0b1120"
-    },
     "updates": {
       "fallbackToCacheTimeout": 0
     },
@@ -44,6 +39,19 @@
         "projectId": "e63bda01-dd05-49dd-bd52-c1db9776d870"
       }
     },
-    "owner": "mr_axisman"
+    "owner": "mr_axisman",
+    "plugins": [
+      "expo-sharing",
+      "expo-status-bar",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#0b1120",
+          "imageWidth": 200
+        }
+      ]
+    ]
   }
 }

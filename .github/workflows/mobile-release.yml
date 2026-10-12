@@ -1,0 +1,90 @@
+name: Mobile Releases
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: "Platform to build"
+        required: false
+        default: all
+        type: choice
+        options:
+          - all
+          - android
+          - ios
+      profile:
+        description: "EAS build profile"
+        required: false
+        default: production
+        type: choice
+        options:
+          - preview
+          - production
+      submit:
+        description: "Submit latest build to stores (production profile only)"
+        required: false
+        default: "no"
+        type: choice
+        options:
+          - "no"
+          - "yes"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-release-${{ github.event.inputs.platform || 'all' }}-${{ github.event.inputs.profile || 'production' }}
+  cancel-in-progress: false
+
+jobs:
+  build-mobile:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: DueFlux_app_mobile/expo
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: DueFlux_app_mobile/expo/package-lock.json
+
+      - name: Setup Expo and EAS
+        uses: expo/expo-github-action@v8
+        with:
+          token: ${{ secrets.EXPO_TOKEN }}
+          eas-version: latest
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify EAS authentication
+        run: npx eas whoami
+
+      - name: Validate submit option
+        if: ${{ github.event.inputs.submit == 'yes' && github.event.inputs.profile != 'production' }}
+        run: |
+          echo "Store submit requires production profile."
+          exit 1
+
+      - name: Build Android
+        if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'android' }}
+        run: npx eas build --non-interactive --wait --platform android --profile ${{ github.event.inputs.profile }}
+
+      - name: Build iOS
+        if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'ios' }}
+        run: npx eas build --non-interactive --wait --platform ios --profile ${{ github.event.inputs.profile }}
+
+      - name: Submit Android
+        if: ${{ github.event.inputs.submit == 'yes' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'android') }}
+        run: npx eas submit --non-interactive --latest --platform android --profile production
+
+      - name: Submit iOS
+        if: ${{ github.event.inputs.submit == 'yes' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'ios') }}
+        run: npx eas submit --non-interactive --latest --platform ios --profile production

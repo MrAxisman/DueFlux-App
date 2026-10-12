@@ -8,6 +8,10 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0"
     />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' https://www.gstatic.com; connect-src 'self' https: wss:; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; object-src 'none'; base-uri 'self'"
+    />
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
@@ -99,6 +103,16 @@
               👁
             </button>
           </div>
+          <div class="login-recovery">
+            <a
+              id="login-forgot-link"
+              class="link-inline"
+              href="#"
+              target="_blank"
+              rel="noreferrer"
+              >Forgot password?</a
+            >
+          </div>
 
           <button
             id="btn-login"
@@ -173,6 +187,105 @@
 
       <!-- MAIN CONTENT -->
       <main class="app-main">
+        <section class="card app-hero">
+          <div class="app-hero-grid">
+            <div class="app-hero-copy">
+              <p id="hero-eyebrow" class="hero-eyebrow">DueFlux cloud workspace</p>
+              <h2 id="hero-title" class="hero-title">Invoice command center</h2>
+              <p id="hero-subtitle" class="hero-subtitle">
+                Automatic sync, smart categorization and clear monthly control for all connected inboxes.
+              </p>
+              <div class="hero-pills">
+                <span id="hero-pill-sync" class="hero-pill">Auto sync active</span>
+                <span id="hero-pill-status" class="hero-pill">Status automation active</span>
+                <span id="hero-pill-cloud" class="hero-pill">Cloud only</span>
+              </div>
+            </div>
+            <div class="app-hero-metrics">
+              <div class="hero-metric">
+                <p id="hero-metric-month-label">Selected month total</p>
+                <strong id="hero-metric-month-value">0.00 RON</strong>
+              </div>
+              <div class="hero-metric">
+                <p id="hero-metric-all-label">All time total</p>
+                <strong id="hero-metric-all-value">0.00 RON</strong>
+              </div>
+              <div class="hero-metric">
+                <p id="hero-metric-sync-label">Last email sync</p>
+                <strong id="hero-metric-sync-value">-</strong>
+              </div>
+            </div>
+          </div>
+          <div class="hero-visual">
+            <div class="hero-ring"></div>
+            <div class="hero-ring hero-ring-2"></div>
+            <div class="hero-node hero-node-a"></div>
+            <div class="hero-node hero-node-b"></div>
+            <div class="hero-node hero-node-c"></div>
+            <div class="hero-gridlines"></div>
+            <div class="hero-signal">
+              <span></span>
+              <span></span>
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+          </div>
+        </section>
+
+        <!-- DUEFLUX INTELLIGENCE WORKSPACE -->
+        <section class="df-workspace" aria-labelledby="df-pulse-title">
+          <div class="df-workspace-bar">
+            <div class="df-workspace-scope">
+              <div class="df-space-switcher" role="group" aria-label="Workspace">
+                <button id="df-space-all" class="df-space-chip" type="button" data-space="all" hidden>All</button>
+                <button id="df-space-home" class="df-space-chip" type="button" data-space="home">Home</button>
+                <button id="df-space-business" class="df-space-chip" type="button" data-space="business" hidden>Business</button>
+              </div>
+              <p id="df-workspace-plan-note" class="df-workspace-plan-note"></p>
+            </div>
+            <div class="df-workspace-actions">
+              <button id="df-source-hub-open" class="ghost-btn small" type="button">Inbox Mesh</button>
+              <button id="df-privacy-vault-open" class="ghost-btn small" type="button">Privacy Vault</button>
+            </div>
+          </div>
+
+          <div class="df-pulse-shell">
+            <div class="df-pulse-heading">
+              <div>
+                <p id="df-pulse-eyebrow" class="df-eyebrow">DueFlux Pulse</p>
+                <h3 id="df-pulse-title">What needs your attention</h3>
+              </div>
+              <span id="df-pulse-state" class="df-live-badge">Live intelligence</span>
+            </div>
+            <div id="df-pulse-cards" class="df-pulse-cards" aria-live="polite"></div>
+          </div>
+
+          <div class="df-intelligence-grid">
+            <article class="df-intelligence-card df-timeline-card">
+              <div class="df-card-heading">
+                <div>
+                  <p id="df-timeline-eyebrow" class="df-eyebrow">Obligation Twin</p>
+                  <h3 id="df-timeline-title">Upcoming subscription timeline</h3>
+                </div>
+                <span id="df-timeline-count" class="df-count-badge">0</span>
+              </div>
+              <div id="df-obligation-timeline" class="df-obligation-timeline"></div>
+            </article>
+
+            <article class="df-intelligence-card df-guard-card">
+              <div class="df-card-heading">
+                <div>
+                  <p id="df-guard-eyebrow" class="df-eyebrow">DueFlux Guard</p>
+                  <h3 id="df-guard-title">Evidence and anomaly protection</h3>
+                </div>
+                <span id="df-guard-count" class="df-count-badge">0</span>
+              </div>
+              <div id="df-guard-feed" class="df-guard-feed"></div>
+            </article>
+          </div>
+        </section>
+
         <!-- KPIs + SECURITY -->
         <div class="app-row">
           <section class="card kpis">
@@ -181,6 +294,7 @@
               <div class="kpi">
                 <span id="kpi-label-total" class="kpi-label">Total this month</span>
                 <div id="kpi-total" class="kpi-value">0.00 RON</div>
+                <div id="kpi-total-note" class="small muted"></div>
               </div>
               <div class="kpi">
                 <span id="kpi-label-unpaid" class="kpi-label">Unpaid</span>
@@ -206,45 +320,152 @@
         <section class="card full">
           <div class="table-header">
             <h3 id="invoices-title">Invoices</h3>
-            <div>
+            <div class="table-header-actions">
+              <button
+                id="btn-fast-reports"
+                type="button"
+                class="ghost-btn"
+              >
+                Fast reports
+              </button>
               <button
                 id="btn-sync"
                 type="button"
                 class="ghost-btn"
-                style="margin-right: 8px"
                 data-online-only="true"
               >
-                Sync mail
+                Sync now
+              </button>
+              <button
+                id="btn-delete-all-invoices"
+                type="button"
+                class="ghost-btn danger"
+                data-offline-capable="true"
+              >
+                Delete all
               </button>
               <button
                 id="btn-add-invoice"
                 type="button"
-                class="primary-btn small"
-                data-online-only="true"
+                class="primary-btn"
+                data-offline-capable="true"
               >
                 + Add invoice
               </button>
             </div>
           </div>
 
+          <div class="table-month-nav">
+            <button id="btn-month-prev" type="button" class="ghost-btn small">
+              &lt;
+            </button>
+            <input id="invoice-month-picker" type="month" />
+            <button id="btn-month-next" type="button" class="ghost-btn small">
+              &gt;
+            </button>
+            <button id="btn-month-current" type="button" class="ghost-btn small">
+              Current month
+            </button>
+          </div>
+
+          <div class="table-tools-row">
+            <label id="invoice-search-label" class="sr-only" for="invoice-search">
+              Search invoices
+            </label>
+            <input
+              id="invoice-search"
+              class="invoice-search"
+              type="search"
+              placeholder="Search invoices..."
+            />
+            <span id="offline-cache-indicator" class="offline-cache-indicator hidden">
+              Offline cache
+            </span>
+          </div>
+
+          <div id="invoice-setup-panel" class="setup-panel">
+            <div class="setup-panel-head">
+              <div>
+                <p id="setup-panel-eyebrow" class="setup-panel-eyebrow">
+                  First setup
+                </p>
+                <h4 id="setup-panel-title">Connect your invoice sources</h4>
+                <p id="setup-panel-desc" class="small muted">
+                  Choose email or phone now. You can manage both later from Settings.
+                </p>
+              </div>
+              <button
+                id="setup-panel-settings"
+                type="button"
+                class="ghost-btn small"
+              >
+                Open settings
+              </button>
+            </div>
+
           <div id="mail-sync-panel" class="mail-sync-panel hidden">
             <div class="mail-sync-row">
               <div>
-                <p id="mail-sync-title" class="mail-sync-title">Invoice inbox</p>
+                <p id="mail-sync-title" class="mail-sync-title">Email sync</p>
                 <p id="mail-sync-desc" class="mail-sync-desc">
-                  Forward invoices to your personal DueFlux address.
+                  Connect your email account to sync invoices automatically.
                 </p>
               </div>
               <div class="mail-sync-actions">
-                <button id="mail-sync-copy" type="button" class="ghost-btn small">
-                  Copy address
+                <button
+                  id="mail-sync-connect"
+                  type="button"
+                  class="primary-btn small"
+                >
+                  Connect email
                 </button>
               </div>
             </div>
-            <div class="mail-sync-row">
-              <span id="mail-sync-address" class="mail-sync-address">—</span>
-            </div>
+
+            <div id="mail-provider-list" class="mail-provider-list"></div>
+
             <p id="mail-sync-status" class="mail-sync-status small muted"></p>
+          </div>
+
+          <div id="phone-inbox-panel" class="mail-sync-panel">
+            <div class="mail-sync-row">
+              <div>
+                <p id="phone-inbox-title" class="mail-sync-title">Phone inbox</p>
+                <p id="phone-inbox-desc" class="mail-sync-desc">
+                  Connect a phone number for SMS verification and alerts.
+                </p>
+              </div>
+              <div class="mail-sync-actions">
+                <button
+                  id="phone-inbox-manage"
+                  type="button"
+                  class="primary-btn small"
+                  data-online-only="true"
+                >
+                  Connect phone
+                </button>
+              </div>
+            </div>
+            <div class="phone-inbox-meta">
+              <p id="phone-inbox-number-label" class="small muted">DueFlux inbox number</p>
+              <div class="phone-inbox-meta-row">
+                <code id="phone-inbox-number-value" class="phone-inbox-number">Not configured</code>
+                <button
+                  id="phone-inbox-copy"
+                  type="button"
+                  class="ghost-btn small"
+                  data-online-only="true"
+                >
+                  Copy
+                </button>
+              </div>
+              <p id="phone-inbox-number-hint" class="small muted">
+                Forward invoice SMS/WhatsApp messages to this inbox number.
+              </p>
+            </div>
+            <p id="phone-inbox-status" class="mail-sync-status small muted"></p>
+            <p id="phone-inbox-last" class="mail-sync-status small muted"></p>
+          </div>
           </div>
 
           <div class="table-wrap">
@@ -273,7 +494,7 @@
           <div class="modal-header">
             <h3 id="modal-add-title">Add invoice</h3>
             <button id="modal-close" class="icon-btn small" type="button">
-              ?
+              x
             </button>
           </div>
           <div class="modal-body">
@@ -323,9 +544,347 @@
               id="modal-save"
               type="button"
               class="primary-btn small"
-              data-online-only="true"
+              data-offline-capable="true"
             >
               Save
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- INVOICE ACTION CENTER -->
+      <div id="df-action-backdrop" class="modal-backdrop hidden">
+        <div class="modal df-action-modal">
+          <div class="modal-header">
+            <div>
+              <p id="df-action-eyebrow" class="df-eyebrow">Evidence Graph</p>
+              <h3 id="df-action-title">Invoice action center</h3>
+            </div>
+            <button id="df-action-close" class="icon-btn small" type="button">x</button>
+          </div>
+          <div class="modal-body">
+            <div id="df-action-summary" class="df-action-summary"></div>
+            <div class="df-action-columns">
+              <section>
+                <h4 id="df-evidence-title">Why DueFlux trusts this invoice</h4>
+                <div id="df-evidence-list" class="df-evidence-list"></div>
+              </section>
+              <section>
+                <h4 id="df-actions-title">Available actions</h4>
+                <div class="df-command-actions">
+                  <button id="df-action-paid" type="button" class="primary-btn">Mark or confirm paid</button>
+                  <button id="df-action-payment" type="button" class="ghost-btn">Open official payment page</button>
+                  <button id="df-action-cancel-subscription" type="button" class="ghost-btn danger">Stop subscription</button>
+                  <button id="df-action-reminder" type="button" class="ghost-btn">Schedule reminder</button>
+                </div>
+              </section>
+            </div>
+            <div id="df-reminder-editor" class="df-reminder-editor hidden">
+              <label id="df-reminder-label" class="field-label" for="df-reminder-at">Reminder date and time</label>
+              <div class="df-reminder-row">
+                <input id="df-reminder-at" type="datetime-local" />
+                <button id="df-reminder-save" type="button" class="primary-btn small">Save reminder</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- UNIVERSAL INBOX MESH -->
+      <div id="df-sources-backdrop" class="modal-backdrop hidden">
+        <div class="modal df-sources-modal">
+          <div class="modal-header">
+            <div>
+              <p id="df-sources-eyebrow" class="df-eyebrow">Inbox Mesh</p>
+              <h3 id="df-sources-title">Connect any email provider</h3>
+            </div>
+            <button id="df-sources-close" class="icon-btn small" type="button">x</button>
+          </div>
+          <div class="modal-body">
+            <p id="df-sources-desc" class="small muted">
+              Gmail and Outlook use secure direct sync. Every other provider works through your private DueFlux forwarding inbox.
+            </p>
+            <div id="df-provider-catalog" class="df-provider-catalog"></div>
+            <div class="df-forwarding-address">
+              <div>
+                <span id="df-forwarding-label" class="field-label">Your universal forwarding address</span>
+                <code id="df-forwarding-value">Generating...</code>
+              </div>
+              <button id="df-forwarding-copy" type="button" class="ghost-btn small">Copy</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PRIVACY VAULT -->
+      <div id="df-vault-backdrop" class="modal-backdrop hidden">
+        <div class="modal df-vault-modal">
+          <div class="modal-header">
+            <div>
+              <p id="df-vault-eyebrow" class="df-eyebrow">Privacy Vault</p>
+              <h3 id="df-vault-title">Your data, under your control</h3>
+            </div>
+            <button id="df-vault-close" class="icon-btn small" type="button">x</button>
+          </div>
+          <div class="modal-body">
+            <div class="df-vault-grid">
+              <article><strong id="df-vault-cloud-title">Private cloud</strong><p id="df-vault-cloud-desc" class="small muted">Invoice data is isolated under your Firebase user account.</p></article>
+              <article><strong id="df-vault-offline-title">Encrypted device boundary</strong><p id="df-vault-offline-desc" class="small muted">Offline data remains inside the application cache and syncs only after authentication.</p></article>
+              <article><strong id="df-vault-control-title">Lifecycle control</strong><p id="df-vault-control-desc" class="small muted">Delete, export and audit your records whenever you need.</p></article>
+            </div>
+            <label class="settings-checkbox-row">
+              <input id="df-vault-previews" type="checkbox" checked />
+              <span id="df-vault-previews-label">Hide sensitive message previews by default</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- CONFIRM MODAL -->
+      <div id="confirm-backdrop" class="modal-backdrop hidden">
+        <div class="modal confirm-modal">
+          <div class="modal-header">
+            <h3 id="confirm-title">DueFlux</h3>
+            <button id="confirm-close" class="icon-btn small" type="button">
+              x
+            </button>
+          </div>
+          <div class="modal-body">
+            <p id="confirm-message" class="small"></p>
+          </div>
+          <div class="modal-footer">
+            <button id="confirm-cancel" type="button" class="ghost-btn">
+              Cancel
+            </button>
+            <button id="confirm-ok" type="button" class="primary-btn small">
+              OK
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- FAST REPORTS MODAL -->
+      <div id="reports-backdrop" class="modal-backdrop hidden">
+        <div class="modal reports-modal">
+          <div class="modal-header">
+            <h3 id="reports-title">Fast Reports</h3>
+            <button id="reports-close" class="icon-btn small" type="button">
+              x
+            </button>
+          </div>
+          <div class="modal-body">
+            <p id="reports-desc" class="small muted">
+              Build a report from your invoice data, choose the fields, preview it,
+              then export it in the format you need.
+            </p>
+            <div class="reports-grid">
+              <div class="reports-panel">
+                <label id="reports-scope-label" class="field-label" for="reports-scope">
+                  Scope
+                </label>
+                <select id="reports-scope">
+                  <option value="month">Selected month</option>
+                  <option value="all">All time</option>
+                  <option value="visible">Current search results</option>
+                </select>
+                <p id="reports-fields-label" class="field-label reports-fields-label">
+                  Fields
+                </p>
+                <label class="settings-checkbox-row">
+                  <input type="checkbox" data-report-field="company" checked />
+                  <span id="reports-field-company">Company</span>
+                </label>
+                <label class="settings-checkbox-row">
+                  <input type="checkbox" data-report-field="category" checked />
+                  <span id="reports-field-category">Category</span>
+                </label>
+                <label class="settings-checkbox-row">
+                  <input type="checkbox" data-report-field="number" checked />
+                  <span id="reports-field-number">Number</span>
+                </label>
+                <label class="settings-checkbox-row">
+                  <input type="checkbox" data-report-field="issueDate" checked />
+                  <span id="reports-field-issue">Issue date</span>
+                </label>
+                <label class="settings-checkbox-row">
+                  <input type="checkbox" data-report-field="dueDate" checked />
+                  <span id="reports-field-due">Due date</span>
+                </label>
+                <label class="settings-checkbox-row">
+                  <input type="checkbox" data-report-field="amount" checked />
+                  <span id="reports-field-amount">Amount</span>
+                </label>
+                <label class="settings-checkbox-row">
+                  <input type="checkbox" data-report-field="status" checked />
+                  <span id="reports-field-status">Status</span>
+                </label>
+                <label class="settings-checkbox-row">
+                  <input type="checkbox" data-report-field="evidence" checked />
+                  <span id="reports-field-evidence">Evidence confidence</span>
+                </label>
+                <label class="settings-checkbox-row">
+                  <input type="checkbox" data-report-field="cadence" checked />
+                  <span id="reports-field-cadence">Cadence</span>
+                </label>
+                <label class="settings-checkbox-row">
+                  <input type="checkbox" data-report-field="space" checked />
+                  <span id="reports-field-space">Workspace</span>
+                </label>
+                <label class="settings-checkbox-row">
+                  <input type="checkbox" data-report-field="risk" checked />
+                  <span id="reports-field-risk">Guard alerts</span>
+                </label>
+              </div>
+              <div class="reports-preview-panel">
+                <div class="reports-preview-head">
+                  <p id="reports-preview-title" class="field-label">Preview</p>
+                  <span id="reports-preview-count" class="small muted">0 rows</span>
+                </div>
+                <div id="reports-preview" class="reports-preview"></div>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer reports-footer">
+            <button id="reports-cancel" type="button" class="ghost-btn">
+              Cancel
+            </button>
+            <button id="reports-export-csv" type="button" class="ghost-btn">
+              CSV
+            </button>
+            <button id="reports-export-json" type="button" class="ghost-btn">
+              JSON
+            </button>
+            <button id="reports-export-html" type="button" class="ghost-btn">
+              HTML
+            </button>
+            <button id="reports-export-txt" type="button" class="ghost-btn">
+              TXT
+            </button>
+            <button id="reports-export-pdf" type="button" class="primary-btn small">
+              PDF / Print
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- MAIL CONNECT MODAL -->
+      <div id="mail-connect-backdrop" class="modal-backdrop hidden">
+        <div class="modal mail-connect-modal">
+          <div class="modal-header">
+            <h3 id="mail-connect-title">Connect email</h3>
+            <button id="mail-connect-close" class="icon-btn small" type="button">
+              x
+            </button>
+          </div>
+          <div class="modal-body">
+            <p id="mail-connect-desc" class="small muted">
+              Enter the email address you want to sync. We'll detect the provider
+              and open the secure sign-in flow.
+            </p>
+            <label
+              id="mail-connect-email-label"
+              class="field-label"
+              for="mail-connect-email"
+              style="margin-top: 8px"
+            >
+              Email address
+            </label>
+            <input id="mail-connect-email" type="email" />
+            <div class="mail-connect-provider">
+              <span id="mail-connect-provider-label" class="small muted"
+                >Provider</span
+              >
+              <span id="mail-connect-provider" class="mail-connect-provider-value"
+                >Unknown</span
+              >
+            </div>
+            <p
+              id="mail-connect-error"
+              class="small"
+              style="color: #fca5a5; margin-top: 6px"
+            ></p>
+          </div>
+          <div class="modal-footer">
+            <button id="mail-connect-cancel" type="button" class="ghost-btn">
+              Cancel
+            </button>
+            <button
+              id="mail-connect-continue"
+              type="button"
+              class="primary-btn small"
+            >
+              Continue
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- UPDATE PROMPT MODAL -->
+      <div id="update-prompt-backdrop" class="modal-backdrop hidden">
+        <div class="modal update-prompt-modal">
+          <div class="modal-header">
+            <h3 id="update-prompt-title">DueFlux update</h3>
+            <button id="update-prompt-close" class="icon-btn small" type="button">
+              x
+            </button>
+          </div>
+          <div class="modal-body">
+            <p id="update-prompt-desc" class="small muted">
+              Choose how this update should be downloaded and installed.
+            </p>
+
+            <div class="update-prompt-list">
+              <label class="update-prompt-item">
+                <input
+                  id="update-prompt-core-check"
+                  type="checkbox"
+                  checked
+                  disabled
+                />
+                <span id="update-prompt-core-label">Product update</span>
+                <span id="update-prompt-size" class="small muted"></span>
+              </label>
+
+              <label class="update-prompt-item">
+                <input id="update-prompt-auto-check" type="checkbox" />
+                <span id="update-prompt-auto-label"
+                  >Install automatically after download</span
+                >
+              </label>
+            </div>
+
+            <button
+              id="update-prompt-details-toggle"
+              type="button"
+              class="ghost-btn small"
+            >
+              Details
+            </button>
+
+            <div id="update-prompt-details" class="update-prompt-details hidden">
+              <p id="update-prompt-release" class="small muted"></p>
+              <p id="update-prompt-published" class="small muted"></p>
+              <pre id="update-prompt-notes" class="update-prompt-notes"></pre>
+            </div>
+
+            <p id="update-prompt-status" class="small muted"></p>
+            <div
+              id="update-prompt-progress-shell"
+              class="update-prompt-progress-shell hidden"
+            >
+              <div id="update-prompt-progress-bar" class="update-prompt-progress-bar"></div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button id="update-prompt-later" type="button" class="ghost-btn">
+              Later
+            </button>
+            <button
+              id="update-prompt-action"
+              type="button"
+              class="primary-btn small"
+            >
+              Download update
             </button>
           </div>
         </div>
@@ -339,7 +898,7 @@
           <div class="modal-header">
             <h3 id="account-modal-title">Switch account</h3>
             <button id="account-close" class="icon-btn small" type="button">
-              ?
+              x
             </button>
           </div>
           <div class="modal-body">
@@ -367,7 +926,7 @@
             <div class="profile-plan-chip">
               <span id="profile-plan-pill" class="plan-badge">BASIC</span>
             </div>
-            <button id="profile-close" class="icon-btn small" type="button">?</button>
+            <button id="profile-close" class="icon-btn small" type="button">x</button>
           </div>
 
           <div class="modal-body profile-body">
@@ -409,6 +968,13 @@
                   <label class="field-label" for="profile-last" id="profile-last-label">Last name</label>
                   <input id="profile-last" type="text" />
                 </div>
+              </div>
+              <div class="form-row">
+                <label class="field-label" for="profile-phone" id="profile-phone-label">Phone number</label>
+                <input id="profile-phone" type="tel" placeholder="+40 7xx xxx xxx" />
+                <p id="profile-phone-hint" class="small muted">
+                  Used for upcoming mobile invoice capture (SMS/WhatsApp). Verification will be required.
+                </p>
               </div>
               <div class="form-row" id="profile-company-wrap">
                 <label class="field-label" for="profile-company" id="profile-company-label">Company name</label>
@@ -512,6 +1078,127 @@
             <p id="settings-fullscreen-hint" class="small muted">
               You can also press F11 while DueFlux is focused.
             </p>
+          </div>
+
+          <div class="settings-section">
+            <h3 id="settings-finance-title">Finance</h3>
+            <p id="settings-display-currency-label" class="small subtitle">
+              Display currency
+            </p>
+            <div class="select-shell">
+              <select id="settings-display-currency-select"></select>
+            </div>
+            <p id="settings-display-currency-hint" class="small muted">
+              KPI total is converted in real time using live exchange rates.
+            </p>
+            <label class="settings-checkbox-row">
+              <input id="settings-auto-status-toggle" type="checkbox" />
+              <span id="settings-auto-status-label">Automatic invoice status</span>
+            </label>
+            <p id="settings-auto-status-hint" class="small muted">
+              Automatically detects paid and overdue based on invoice and mail confirmations.
+            </p>
+            <p id="settings-exchange-rate-status" class="small muted"></p>
+          </div>
+
+          <div id="settings-email-section" class="settings-section">
+            <h3 id="settings-email-title">Email sync</h3>
+            <p id="settings-email-subtitle" class="small muted">
+              Manage connected inboxes for automatic invoice sync.
+            </p>
+            <div id="settings-mail-provider-list" class="mail-provider-list"></div>
+            <div class="settings-actions-row">
+              <button
+                id="settings-email-connect"
+                type="button"
+                class="primary-btn small"
+                data-online-only="true"
+              >
+                Connect email
+              </button>
+              <button
+                id="settings-email-sync"
+                type="button"
+                class="ghost-btn small"
+                data-online-only="true"
+              >
+                Sync now
+              </button>
+              <button id="settings-email-source-hub" type="button" class="ghost-btn small">
+                Inbox Mesh
+              </button>
+              <button id="settings-privacy-vault" type="button" class="ghost-btn small">
+                Privacy Vault
+              </button>
+            </div>
+            <p id="settings-email-status" class="small muted"></p>
+          </div>
+
+          <div id="settings-phone-section" class="settings-section">
+            <h3 id="settings-phone-title">Phone inbox</h3>
+            <p id="settings-phone-subtitle" class="small muted">
+              Connect a phone number for upcoming SMS/WhatsApp invoice capture.
+            </p>
+            <div class="settings-phone-inbox-box">
+              <p id="settings-phone-inbox-label" class="field-label">
+                DueFlux inbox number
+              </p>
+              <div class="settings-phone-inbox-row">
+                <code id="settings-phone-inbox-number" class="phone-inbox-number"
+                  >Not configured</code
+                >
+                <button
+                  id="settings-phone-inbox-copy"
+                  type="button"
+                  class="ghost-btn small"
+                  data-online-only="true"
+                >
+                  Copy
+                </button>
+              </div>
+              <p id="settings-phone-inbox-hint" class="small muted">
+                Forward invoice SMS/WhatsApp messages to this number.
+              </p>
+              <p id="settings-phone-inbox-last" class="small muted">No phone sync yet.</p>
+            </div>
+            <div class="settings-phone-row">
+              <div class="settings-phone-field">
+                <label class="field-label" for="settings-phone-input" id="settings-phone-label">Phone number</label>
+                <input id="settings-phone-input" type="tel" placeholder="+40 7xx xxx xxx" />
+              </div>
+              <button id="settings-phone-save" type="button" class="primary-btn small" data-online-only="true">
+                Save
+              </button>
+            </div>
+            <div class="settings-phone-actions">
+              <button
+                id="settings-phone-send-code"
+                type="button"
+                class="ghost-btn small"
+                data-online-only="true"
+              >
+                Send code
+              </button>
+            </div>
+            <div class="settings-phone-verify-row">
+              <input
+                id="settings-phone-code"
+                type="text"
+                inputmode="numeric"
+                pattern="[0-9]*"
+                maxlength="6"
+                placeholder="123456"
+              />
+              <button
+                id="settings-phone-verify"
+                type="button"
+                class="primary-btn small"
+                data-online-only="true"
+              >
+                Verify
+              </button>
+            </div>
+            <p id="settings-phone-status" class="small muted">Not verified</p>
           </div>
 
           <div class="settings-section">
@@ -637,9 +1324,13 @@
       </div>
     </div>
 
-    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-functions-compat.js"></script>
+    <script src="feature-locales.js"></script>
+    <script src="product-intelligence.js"></script>
+    <script src="offline-queue.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

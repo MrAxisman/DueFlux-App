@@ -3,6 +3,10 @@ name: Desktop Releases
 on:
   workflow_dispatch:
     inputs:
+      version:
+        description: "New release version, for example 0.2.0"
+        required: true
+        type: string
       platform:
         description: "Platform to build"
         required: false
@@ -14,66 +18,35 @@ on:
           - linux
           - macos
 
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-release-${{ github.event.inputs.platform || 'all' }}
+  cancel-in-progress: false
+
 jobs:
-  build-windows:
-    if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'windows' }}
-    runs-on: windows-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: DueFlux_app_desktop/Windows/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-        working-directory: DueFlux_app_desktop/Windows
-
-      - name: Build and publish
-        run: npm run release:win
-        working-directory: DueFlux_app_desktop/Windows
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
-
-  build-linux:
-    if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'linux' }}
+  platforms:
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: DueFlux_app_desktop/Linux/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-        working-directory: DueFlux_app_desktop/Linux
-
-      - name: Build and publish
-        run: npm run release:linux
-        working-directory: DueFlux_app_desktop/Linux
+      - id: select
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          PLATFORM: ${{ inputs.platform }}
+        run: |
+          node -e 'const entries=[{platform:"windows",label:"Windows",os:"windows-latest",release_cmd:"npm run release:win"},{platform:"linux",label:"Linux",os:"ubuntu-latest",release_cmd:"npm run release:linux"},{platform:"macos",label:"macOS",os:"macos-latest",release_cmd:"npm run release:mac"}];require("fs").appendFileSync(process.env.GITHUB_OUTPUT,"matrix="+JSON.stringify({include:entries.filter(x=>process.env.PLATFORM==="all"||x.platform===process.env.PLATFORM)})+"\n")'
+  build:
+    needs: platforms
+    name: Build ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.platforms.outputs.matrix) }}
+    defaults:
+      run:
+        working-directory: DueFlux_app_desktop/Windows
 
-  build-macos:
-    if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'macos' }}
-    runs-on: macos-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -81,20 +54,28 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
           cache-dependency-path: DueFlux_app_desktop/Windows/package-lock.json
 
       - name: Install dependencies
         run: npm ci
-        working-directory: DueFlux_app_desktop/Windows
+
+      - name: Validate release version and signing
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_PLATFORM: ${{ matrix.platform }}
+          CSC_LINK: ${{ matrix.platform == 'windows' && secrets.WINDOWS_CSC_LINK || secrets.MACOS_CSC_LINK }}
+        run: node scripts/prepare-release.js
 
       - name: Build and publish
-        run: npm run release:mac
-        working-directory: DueFlux_app_desktop/Windows
+        run: ${{ matrix.release_cmd }}
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN != '' && secrets.GH_TOKEN || github.token }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          CSC_LINK: ${{ matrix.platform == 'windows' && secrets.WINDOWS_CSC_LINK || secrets.MACOS_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ matrix.platform == 'windows' && secrets.WINDOWS_CSC_KEY_PASSWORD || secrets.MACOS_CSC_KEY_PASSWORD }}
+          REQUIRE_SIGNING: "true"

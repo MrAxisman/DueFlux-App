@@ -1,0 +1,28 @@
+name: Cloud Deploy
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Private repository workflow to start"
+        default: backend
+        type: choice
+        options: [backend, website, reports]
+permissions:
+  contents: read
+jobs:
+  dispatch-private-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Start deployment in the private repository
+        env:
+          GH_TOKEN: ${{ secrets.CLOUD_REPO_TOKEN }}
+          TARGET: ${{ inputs.target }}
+        run: |
+          test -n "$GH_TOKEN" || { echo "Run the workflow directly in MrAxisman/DueFlux, or configure CLOUD_REPO_TOKEN for cross-repository dispatch."; exit 1; }
+          case "$TARGET" in
+            website) WORKFLOW=website-deploy.yml ;;
+            reports) WORKFLOW=reports-deploy.yml ;;
+            backend) WORKFLOW=firebase-deploy.yml ;;
+            *) exit 1 ;;
+          esac
+          gh workflow run "$WORKFLOW" --repo MrAxisman/DueFlux

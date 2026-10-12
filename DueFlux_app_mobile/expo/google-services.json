@@ -12,7 +12,12 @@
           "package_name": "com.dueflux.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "71833659340-pql5qfccfbjadciibjrar0bavv0tecga.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyCszvcsZ7VSIkLLfJIhpBOguxfuGfEEm2o"
@@ -20,7 +25,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "71833659340-pql5qfccfbjadciibjrar0bavv0tecga.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "71833659340-dut5g6k2fa2v7pm5usbip30c1242eoq4.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.dueflux.app"
+              }
+            }
+          ]
         }
       }
     }

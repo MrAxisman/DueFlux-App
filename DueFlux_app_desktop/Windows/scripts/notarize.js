@@ -12,6 +12,7 @@ exports.default = async function notarizeApp(context) {
   const teamId = process.env.APPLE_TEAM_ID;
 
   if (!appleId || !appleIdPassword || !teamId) {
+    if (process.env.REQUIRE_SIGNING === "true") throw new Error("Public macOS releases require signing and notarization credentials.");
     console.warn(
       "Skipping notarization: set APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, and APPLE_TEAM_ID."
     );
