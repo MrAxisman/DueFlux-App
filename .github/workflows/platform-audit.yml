@@ -1,0 +1,58 @@
+name: Platform Audit
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "DueFlux_app_desktop/**"
+      - "DueFlux_app_mobile/expo/**"
+      - ".github/workflows/desktop-release.yml"
+      - ".github/workflows/mobile-release.yml"
+      - ".github/workflows/cloud-deploy.yml"
+      - "scripts/**"
+      - ".github/workflows/platform-audit.yml"
+      - "firebase.json"
+
+jobs:
+  audit:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run platform sync audit
+        shell: pwsh
+        run: ./scripts/audit-platform-sync.ps1 -Strict
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test shared behavior and translations
+        run: |
+          node --test scripts/test-offline-queue.js
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node --test scripts/test-mobile-data.js
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node scripts/test-product-intelligence.js
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node scripts/audit-i18n.mjs
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - run: npm ci --ignore-scripts
+      - run: npm ci --prefix DueFlux_app_desktop/Windows
+      - run: npm run test:desktop
+
+  mobile:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: DueFlux_app_mobile/expo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: DueFlux_app_mobile/expo/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npx expo export --platform android --platform ios

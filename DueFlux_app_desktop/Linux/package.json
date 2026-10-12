@@ -2,9 +2,10 @@
   "name": "dueflux-desktop",
   "version": "0.1.0",
   "description": "DueFlux - desktop client (Electron)",
+  "author": "DueFlux Team",
   "main": "main.js",
   "scripts": {
-    "start": "electron .",
+    "start": "node scripts/start-electron.js",
     "build:win": "electron-builder --win --x64",
     "build:linux": "electron-builder --linux",
     "build:mac": "electron-builder --mac",
@@ -20,16 +21,17 @@
   },
   "devDependencies": {
     "@electron/notarize": "^2.3.2",
-    "electron": "^31.0.0",
-    "electron-builder": "^24.13.3"
+    "electron": "^43.1.0",
+    "electron-builder": "^26.15.3"
   },
   "repository": {
     "type": "git",
     "url": "https://github.com/MrAxisman/DueFlux-App.git"
   },
-  "build": {
+    "build": {
     "appId": "com.dueflux.desktop",
     "productName": "DueFlux",
+    "icon": "renderer/assets/app-icon.png",
     "afterSign": "scripts/notarize.js",
     "directories": {
       "output": "dist"
@@ -40,7 +42,7 @@
       "renderer/**/*",
       "package.json"
     ],
-    "asar": false,
+    "asar": true,
     "win": {
       "artifactName": "DueFlux-Windows.${ext}",
       "target": [

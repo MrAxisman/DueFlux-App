@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   Easing,
   Image,
@@ -11,6 +12,7 @@ import {
   Platform,
   Pressable,
   SafeAreaView,
+  Share,
   ScrollView,
   StyleSheet,
   Text,
@@ -23,10 +25,16 @@ import {
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { LinearGradient } from "expo-linear-gradient";
-import * as Clipboard from "expo-clipboard";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import NetInfo from "@react-native-community/netinfo";
+import * as FileSystem from "expo-file-system/legacy";
+import * as Sharing from "expo-sharing";
+import * as Print from "expo-print";
 import { getApps, initializeApp } from "firebase/app";
 import {
   getAuth,
+  initializeAuth,
+  getReactNativePersistence,
   onAuthStateChanged,
   signInWithEmailAndPassword,
   signOut,
@@ -35,15 +43,21 @@ import {
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
+  getDoc,
   getFirestore,
-  limit,
   onSnapshot,
   query,
   serverTimestamp,
   setDoc,
+  updateDoc,
 } from "firebase/firestore";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import { getStorage, listAll, ref } from "firebase/storage";
+const Intelligence = require("./productIntelligence");
+const OfflineQueue = require("./offlineQueue");
+const featureLocales = require("./featureLocales");
 
 const LOGO = require("./assets/logo-dueflux.png");
 const SPLASH_DURATION_MS = 2800;
@@ -51,6 +65,12 @@ const SIGNUP_URL = "https://dueflux.com/signup.html";
 const ACCOUNT_URL = "https://dueflux.com/account.html";
 const PRIVACY_URL = "https://dueflux.com/privacy.html";
 const TERMS_URL = "https://dueflux.com/terms.html";
+const OFFLINE_CACHE_PREFIX = "df_mobile_cache_";
+const OFFLINE_QUEUE_PREFIX = "df_mobile_queue_";
+const MOBILE_LANGUAGE_KEY = "df_mobile_language";
+const MOBILE_PLAN_KEY = "df_mobile_account_plan";
+const MOBILE_PRIVACY_KEY = "df_mobile_sensitive_previews";
+const REPORT_FIELDS = ["company", "category", "number", "issueDate", "dueDate", "amount", "status", "evidence", "cadence", "space", "risk"];
 
 const firebaseConfig = {
   apiKey: "AIzaSyDPCDXynl6_SPbCrpsf0pmKsTVXqFPy_Sg",
@@ -62,8 +82,19 @@ const firebaseConfig = {
 };
 
 const firebaseApp = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
-const auth = getAuth(firebaseApp);
+const auth = (() => {
+  try {
+    return initializeAuth(firebaseApp, {
+      persistence: getReactNativePersistence(AsyncStorage),
+    });
+  } catch (error) {
+    // Fast Refresh can reuse an already initialized Auth instance.
+    if (error.code === "auth/already-initialized") return getAuth(firebaseApp);
+    throw error;
+  }
+})();
 const firestore = getFirestore(firebaseApp);
+const functions = getFunctions(firebaseApp, "us-central1");
 const storage = getStorage(firebaseApp);
 const legacyStorage = getStorage(firebaseApp, "gs://dueflux-product.appspot.com");
 
@@ -1457,96 +1488,250 @@ const translations = {
   },
 };
 
+const mobileFeatureTranslations = {
+  en: {
+    offline_badge: "Offline cache",
+    offline_notice: "Offline mode. You can view cached invoices and queue local changes.",
+    offline_required: "Internet connection required for this action.",
+    offline_saved: "Saved locally. It will sync when internet returns.",
+    offline_synced: "Offline changes synced.",
+    setup_title: "Connect invoice sources",
+    setup_desc: "Start with email or phone. After setup, manage sources from Settings.",
+    setup_open_settings: "Open settings",
+    phone_title: "Phone inbox",
+    phone_desc: "Verify your phone, then forward invoice SMS/WhatsApp messages to DueFlux.",
+    phone_number: "Phone number",
+    phone_code: "6-digit code",
+    phone_save: "Save",
+    phone_send_code: "Send code",
+    phone_verify: "Verify",
+    phone_verified: "Phone verified.",
+    phone_pending: "Verification pending.",
+    phone_empty: "No phone configured.",
+    phone_inbox_number: "DueFlux inbox number",
+    phone_inbox_missing: "Not configured",
+    phone_sync_now: "Sync phone inbox",
+    phone_sms_sent: "Code sent. Delivery depends on Twilio/SMS carrier settings.",
+    phone_sms_error: "Could not send SMS. Check Twilio live/A2P/geo settings.",
+    reports_button: "Reports",
+    reports_title: "Reports",
+    reports_desc: "Choose fields and export invoice reports.",
+    reports_csv: "CSV",
+    reports_json: "JSON",
+    reports_html: "HTML",
+    reports_txt: "TXT",
+    reports_exported: "Report ready.",
+    reports_empty: "No invoices for report.",
+    report_company: "Company",
+    report_category: "Category",
+    report_number: "Number",
+    report_issueDate: "Issue date",
+    report_dueDate: "Due date",
+    report_amount: "Amount",
+    report_status: "Status",
+    sync_now: "Sync now",
+    mail_settings_title: "Email sync",
+    mail_settings_desc: "Manage connected inboxes from Settings.",
+  },
+  ro: {
+    offline_badge: "Cache offline",
+    offline_notice: "Mod offline. Poti vedea facturile salvate local si poti pune modificari in coada.",
+    offline_required: "Ai nevoie de internet pentru aceasta actiune.",
+    offline_saved: "Salvat local. Se va sincroniza cand revine internetul.",
+    offline_synced: "Modificarile offline au fost sincronizate.",
+    setup_title: "Conecteaza sursele de facturi",
+    setup_desc: "Incepe cu email sau telefon. Dupa configurare, administrezi sursele din Setari.",
+    setup_open_settings: "Deschide setarile",
+    phone_title: "Inbox telefon",
+    phone_desc: "Verifica telefonul, apoi redirectioneaza SMS/WhatsApp cu facturi catre DueFlux.",
+    phone_number: "Numar telefon",
+    phone_code: "Cod de 6 cifre",
+    phone_save: "Salveaza",
+    phone_send_code: "Trimite cod",
+    phone_verify: "Verifica",
+    phone_verified: "Telefon verificat.",
+    phone_pending: "Verificare in asteptare.",
+    phone_empty: "Telefon neconfigurat.",
+    phone_inbox_number: "Numar inbox DueFlux",
+    phone_inbox_missing: "Neconfigurat",
+    phone_sync_now: "Sincronizeaza inbox telefon",
+    phone_sms_sent: "Cod trimis. Livrarea depinde de setarile Twilio/operator.",
+    phone_sms_error: "Nu am putut trimite SMS. Verifica Twilio live/A2P/geo settings.",
+    reports_button: "Rapoarte",
+    reports_title: "Reports",
+    reports_desc: "Alege campurile si exporta rapoarte de facturi.",
+    reports_csv: "CSV",
+    reports_json: "JSON",
+    reports_html: "HTML",
+    reports_txt: "TXT",
+    reports_exported: "Raport pregatit.",
+    reports_empty: "Nu exista facturi pentru raport.",
+    report_company: "Companie",
+    report_category: "Categorie",
+    report_number: "Numar",
+    report_issueDate: "Data emiterii",
+    report_dueDate: "Data scadentei",
+    report_amount: "Suma",
+    report_status: "Stare",
+    sync_now: "Sincronizeaza acum",
+    mail_settings_title: "Sincronizare email",
+    mail_settings_desc: "Administreaza inboxurile conectate din Setari.",
+  },
+};
+
+Object.keys(mobileFeatureTranslations).forEach((code) => {
+  translations[code] = {
+    ...(translations[code] || {}),
+    ...mobileFeatureTranslations[code],
+  };
+});
+
+const mobileIntelligenceI18n = {
+  en: {
+    space_all: "All", space_home: "Home", space_business: "Business",
+    pulse_title: "DueFlux Pulse", pulse_attention: "Needs attention", pulse_due: "Due soon", pulse_guard: "Guard alerts", pulse_verified: "Evidence verified",
+    twin_title: "Upcoming subscription timeline", guard_title: "Evidence and anomaly protection",
+    action_title: "Invoice action center", evidence_title: "Why DueFlux trusts this invoice",
+    action_paid: "Mark or confirm paid", action_payment: "Open official payment page", action_cancel: "Stop subscription", action_reminder: "Schedule reminder",
+    reminder_placeholder: "YYYY-MM-DD HH:mm", reminder_save: "Save reminder", reminder_saved: "Reminder scheduled.",
+    action_unavailable: "No verified official page is available for this provider.", action_paid_success: "Payment status confirmed.",
+    inbox_mesh: "Inbox Mesh", inbox_mesh_desc: "Gmail and Outlook use direct sync. All other providers use your private forwarding inbox.",
+    forwarding_address: "Universal forwarding address", forwarding_copy: "Copy address", forwarding_ready: "Address copied.",
+    privacy_vault: "Privacy Vault", privacy_desc: "Sensitive evidence remains hidden until you open the invoice.", privacy_hidden: "Sensitive preview hidden",
+    evidence_confidence: "Evidence confidence", evidence_source: "Source evidence", guard_clear: "No anomalies detected.", timeline_empty: "No predicted renewals yet.",
+    report_evidence: "Evidence confidence", report_cadence: "Cadence", report_space: "Workspace", report_risk: "Guard alerts",
+  },
+  ro: {
+    space_all: "Toate", space_home: "Acasă", space_business: "Afaceri",
+    pulse_title: "DueFlux Pulse", pulse_attention: "Necesită atenție", pulse_due: "Scadente în curând", pulse_guard: "Alerte Guard", pulse_verified: "Dovezi verificate",
+    twin_title: "Cronologia abonamentelor viitoare", guard_title: "Protecție pentru dovezi și anomalii",
+    action_title: "Centrul de acțiuni al facturii", evidence_title: "De ce DueFlux are încredere în această factură",
+    action_paid: "Marchează sau confirmă plata", action_payment: "Deschide pagina oficială de plată", action_cancel: "Oprește abonamentul", action_reminder: "Programează reminder",
+    reminder_placeholder: "AAAA-LL-ZZ OO:mm", reminder_save: "Salvează reminderul", reminder_saved: "Reminder programat.",
+    action_unavailable: "Nu există o pagină oficială verificată pentru acest furnizor.", action_paid_success: "Starea plății a fost confirmată.",
+    inbox_mesh: "Inbox universal", inbox_mesh_desc: "Gmail și Outlook folosesc sincronizare directă. Ceilalți furnizori folosesc inboxul privat de redirecționare.",
+    forwarding_address: "Adresă universală de redirecționare", forwarding_copy: "Copiază adresa", forwarding_ready: "Adresa a fost copiată.",
+    privacy_vault: "Seif de confidențialitate", privacy_desc: "Dovezile sensibile rămân ascunse până deschizi factura.", privacy_hidden: "Previzualizare sensibilă ascunsă",
+    evidence_confidence: "Încredere dovezi", evidence_source: "Dovada sursei", guard_clear: "Nu au fost detectate anomalii.", timeline_empty: "Nu există încă reînnoiri estimate.",
+    report_evidence: "Încredere dovezi", report_cadence: "Frecvență", report_space: "Spațiu", report_risk: "Alerte Guard",
+  },
+};
+
+const mobileCoreKeys = ["space_all", "space_home", "space_business", "pulse_title", "pulse_attention", "pulse_due", "pulse_guard", "pulse_verified", "action_title", "action_paid", "action_payment", "action_cancel", "action_reminder", "inbox_mesh", "privacy_vault"];
+const mobileCorePacks = {
+  hu: ["Mind", "Otthon", "Üzlet", "DueFlux Pulse", "Figyelmet igényel", "Hamarosan esedékes", "Guard riasztások", "Ellenőrzött bizonyíték", "Számla műveleti központ", "Fizetés megerősítése", "Hivatalos fizetési oldal", "Előfizetés leállítása", "Emlékeztető ütemezése", "Univerzális postaláda", "Adatvédelmi trezor"],
+  de: ["Alle", "Privat", "Geschäftlich", "DueFlux Pulse", "Prüfen", "Bald fällig", "Guard-Warnungen", "Belege verifiziert", "Rechnungs-Aktionscenter", "Zahlung bestätigen", "Offizielle Zahlungsseite", "Abonnement beenden", "Erinnerung planen", "Universeller Posteingang", "Datentresor"],
+  fr: ["Tout", "Maison", "Entreprise", "DueFlux Pulse", "À vérifier", "Bientôt dû", "Alertes Guard", "Preuves vérifiées", "Centre d'actions", "Confirmer le paiement", "Page de paiement officielle", "Arrêter l'abonnement", "Planifier un rappel", "Boîte universelle", "Coffre de confidentialité"],
+  it: ["Tutte", "Casa", "Azienda", "DueFlux Pulse", "Da controllare", "In scadenza", "Avvisi Guard", "Prove verificate", "Centro azioni fattura", "Conferma pagamento", "Pagina ufficiale di pagamento", "Interrompi abbonamento", "Programma promemoria", "Posta universale", "Cassaforte privacy"],
+  tr: ["Tümü", "Ev", "İş", "DueFlux Pulse", "Dikkat gerekli", "Yakında vadesi dolacak", "Guard uyarıları", "Kanıt doğrulandı", "Fatura işlem merkezi", "Ödemeyi onayla", "Resmi ödeme sayfası", "Aboneliği durdur", "Hatırlatıcı planla", "Evrensel gelen kutusu", "Gizlilik kasası"],
+  es: ["Todas", "Hogar", "Empresa", "DueFlux Pulse", "Requiere atención", "Vence pronto", "Alertas Guard", "Evidencia verificada", "Centro de acciones", "Confirmar pago", "Página oficial de pago", "Cancelar suscripción", "Programar recordatorio", "Bandeja universal", "Bóveda de privacidad"],
+  ru: ["Все", "Дом", "Бизнес", "DueFlux Pulse", "Требует внимания", "Скоро срок", "Оповещения Guard", "Доказательства проверены", "Центр действий", "Подтвердить оплату", "Официальная оплата", "Остановить подписку", "Запланировать напоминание", "Универсальная почта", "Хранилище конфиденциальности"],
+  zh: ["全部", "家庭", "企业", "DueFlux Pulse", "需要关注", "即将到期", "Guard 警报", "证据已验证", "发票操作中心", "确认付款", "官方付款页面", "停止订阅", "设置提醒", "通用收件箱", "隐私保险库"],
+  ja: ["すべて", "家庭", "ビジネス", "DueFlux Pulse", "要確認", "まもなく期限", "Guard アラート", "証拠確認済み", "請求書アクションセンター", "支払いを確認", "公式支払いページ", "サブスクリプションを停止", "リマインダーを設定", "ユニバーサル受信箱", "プライバシー保管庫"],
+  ar: ["الكل", "المنزل", "الأعمال", "DueFlux Pulse", "يحتاج إلى انتباه", "يستحق قريبًا", "تنبيهات Guard", "أدلة موثقة", "مركز إجراءات الفاتورة", "تأكيد الدفع", "صفحة الدفع الرسمية", "إيقاف الاشتراك", "جدولة تذكير", "صندوق وارد موحد", "خزنة الخصوصية"],
+};
+Object.keys(mobileCorePacks).forEach((code) => {
+  mobileIntelligenceI18n[code] = Object.fromEntries(mobileCoreKeys.map((key, index) => [key, mobileCorePacks[code][index]]));
+});
+Object.keys(translations).forEach((code) => {
+  translations[code] = {
+    ...translations.en,
+    ...translations[code],
+    ...mobileIntelligenceI18n.en,
+    ...(mobileIntelligenceI18n[code] || {}),
+  };
+});
+
 const THEMES = {
   dark: {
     mode: "dark",
-    background: ["#0b1120", "#020617"],
+    background: ["#060b16", "#040913"],
     cardGradient: [
-      "rgba(56, 189, 248, 0.14)",
-      "rgba(79, 70, 229, 0.12)",
-      "rgba(6, 10, 22, 0.94)",
+      "rgba(53, 164, 255, 0.16)",
+      "rgba(91, 108, 255, 0.14)",
+      "rgba(9, 16, 31, 0.96)",
     ],
-    glowTop: "rgba(56, 189, 248, 0.35)",
-    glowRight: "rgba(79, 70, 229, 0.28)",
-    text: "#e5e7eb",
-    textMuted: "#9ca3af",
-    textSoft: "#cbd5f5",
+    glowTop: "rgba(53, 164, 255, 0.34)",
+    glowRight: "rgba(91, 108, 255, 0.3)",
+    text: "#eaf2ff",
+    textMuted: "#97a9c8",
+    textSoft: "#c8daf9",
     textInverse: "#ffffff",
-    border: "rgba(148, 163, 184, 0.4)",
-    borderStrong: "rgba(148, 163, 184, 0.6)",
-    borderLight: "rgba(148, 163, 184, 0.25)",
-    surface: "rgba(2, 6, 23, 0.98)",
-    surfaceCard: "#020617",
-    surfaceCardAlt: "rgba(15, 23, 42, 0.85)",
-    surfaceHeader: "rgba(15, 23, 42, 0.92)",
-    surfaceSoft: "rgba(148, 163, 184, 0.08)",
-    inputBg: "rgba(255, 255, 255, 0.02)",
-    inputBorder: "rgba(148, 163, 184, 0.45)",
-    rowBg: "rgba(11, 18, 36, 0.6)",
-    overlay: "rgba(15, 23, 42, 0.7)",
-    accent: "#38bdf8",
-    accentStrong: "#4f46e5",
-    accentGradient: ["#38bdf8", "#6366f1"],
-    accentGradientAlt: ["#38bdf8", "#4f46e5"],
-    accentSoft: "rgba(56, 189, 248, 0.15)",
-    accentBorder: "rgba(56, 189, 248, 0.6)",
-    danger: "#fca5a5",
-    dangerBorder: "rgba(248, 113, 113, 0.35)",
-    dangerSoft: "rgba(248, 113, 113, 0.12)",
-    warning: "#fbbf24",
-    warningBorder: "rgba(234, 179, 8, 0.35)",
-    warningSoft: "rgba(234, 179, 8, 0.18)",
-    success: "#4ade80",
-    successBorder: "rgba(34, 197, 94, 0.35)",
+    border: "rgba(122, 154, 198, 0.28)",
+    borderStrong: "rgba(122, 154, 198, 0.44)",
+    borderLight: "rgba(122, 154, 198, 0.2)",
+    surface: "rgba(10, 18, 35, 0.97)",
+    surfaceCard: "rgba(13, 24, 45, 0.92)",
+    surfaceCardAlt: "rgba(15, 27, 50, 0.84)",
+    surfaceHeader: "rgba(11, 20, 39, 0.9)",
+    surfaceSoft: "rgba(53, 164, 255, 0.08)",
+    inputBg: "rgba(9, 18, 35, 0.74)",
+    inputBorder: "rgba(122, 154, 198, 0.36)",
+    rowBg: "rgba(10, 20, 40, 0.6)",
+    overlay: "rgba(5, 11, 22, 0.72)",
+    accent: "#35a4ff",
+    accentStrong: "#5b6cff",
+    accentGradient: ["#35a4ff", "#4c57ff"],
+    accentGradientAlt: ["#35a4ff", "#5b6cff"],
+    accentSoft: "rgba(53, 164, 255, 0.16)",
+    accentBorder: "rgba(53, 164, 255, 0.52)",
+    danger: "#fda4af",
+    dangerBorder: "rgba(244, 63, 94, 0.36)",
+    dangerSoft: "rgba(244, 63, 94, 0.12)",
+    warning: "#f59e0b",
+    warningBorder: "rgba(245, 158, 11, 0.34)",
+    warningSoft: "rgba(245, 158, 11, 0.18)",
+    success: "#22c55e",
+    successBorder: "rgba(34, 197, 94, 0.34)",
     successSoft: "rgba(34, 197, 94, 0.16)",
-    link: "#38bdf8",
-    placeholder: "#6b7280",
+    link: "#35a4ff",
+    placeholder: "#6f87ad",
     shadow: "#0f172a",
     statusBar: "light",
   },
   light: {
     mode: "light",
-    background: ["#f8fafc", "#e2e8f0"],
+    background: ["#f8fbff", "#e9f1ff"],
     cardGradient: [
-      "rgba(37, 99, 235, 0.12)",
-      "rgba(14, 165, 233, 0.08)",
-      "rgba(248, 250, 252, 0.96)",
+      "rgba(29, 124, 255, 0.12)",
+      "rgba(76, 87, 255, 0.08)",
+      "rgba(255, 255, 255, 0.96)",
     ],
-    glowTop: "rgba(37, 99, 235, 0.2)",
-    glowRight: "rgba(56, 189, 248, 0.18)",
-    text: "#0f172a",
-    textMuted: "#475569",
-    textSoft: "#334155",
+    glowTop: "rgba(29, 124, 255, 0.2)",
+    glowRight: "rgba(76, 87, 255, 0.14)",
+    text: "#0c1a33",
+    textMuted: "#5c6e8b",
+    textSoft: "#44577a",
     textInverse: "#ffffff",
-    border: "rgba(148, 163, 184, 0.35)",
-    borderStrong: "rgba(100, 116, 139, 0.5)",
-    borderLight: "rgba(148, 163, 184, 0.25)",
+    border: "rgba(92, 110, 139, 0.24)",
+    borderStrong: "rgba(92, 110, 139, 0.38)",
+    borderLight: "rgba(92, 110, 139, 0.2)",
     surface: "rgba(255, 255, 255, 0.98)",
     surfaceCard: "rgba(255, 255, 255, 0.96)",
-    surfaceCardAlt: "rgba(248, 250, 252, 0.92)",
-    surfaceHeader: "rgba(255, 255, 255, 0.95)",
-    surfaceSoft: "rgba(148, 163, 184, 0.2)",
-    inputBg: "rgba(248, 250, 252, 0.95)",
-    inputBorder: "rgba(100, 116, 139, 0.45)",
-    rowBg: "rgba(226, 232, 240, 0.9)",
+    surfaceCardAlt: "rgba(245, 249, 255, 0.94)",
+    surfaceHeader: "rgba(255, 255, 255, 0.92)",
+    surfaceSoft: "rgba(29, 124, 255, 0.08)",
+    inputBg: "rgba(255, 255, 255, 0.94)",
+    inputBorder: "rgba(92, 110, 139, 0.34)",
+    rowBg: "rgba(235, 243, 255, 0.9)",
     overlay: "rgba(15, 23, 42, 0.35)",
-    accent: "#2563eb",
-    accentStrong: "#1d4ed8",
-    accentGradient: ["#2563eb", "#60a5fa"],
-    accentGradientAlt: ["#1d4ed8", "#38bdf8"],
-    accentSoft: "rgba(37, 99, 235, 0.15)",
-    accentBorder: "rgba(37, 99, 235, 0.5)",
-    danger: "#b91c1c",
+    accent: "#1d7cff",
+    accentStrong: "#4c57ff",
+    accentGradient: ["#1d7cff", "#4c57ff"],
+    accentGradientAlt: ["#1d7cff", "#4c57ff"],
+    accentSoft: "rgba(29, 124, 255, 0.14)",
+    accentBorder: "rgba(29, 124, 255, 0.44)",
+    danger: "#dc2626",
     dangerBorder: "rgba(220, 38, 38, 0.35)",
     dangerSoft: "rgba(220, 38, 38, 0.12)",
-    warning: "#b45309",
-    warningBorder: "rgba(217, 119, 6, 0.35)",
-    warningSoft: "rgba(217, 119, 6, 0.18)",
-    success: "#15803d",
+    warning: "#d97706",
+    warningBorder: "rgba(217, 119, 6, 0.34)",
+    warningSoft: "rgba(217, 119, 6, 0.16)",
+    success: "#16a34a",
     successBorder: "rgba(22, 163, 74, 0.35)",
     successSoft: "rgba(22, 163, 74, 0.18)",
-    link: "#2563eb",
-    placeholder: "#94a3b8",
+    link: "#1d7cff",
+    placeholder: "#92a3bf",
     shadow: "#94a3b8",
     statusBar: "dark",
   },
@@ -1635,20 +1820,72 @@ function createStyles(theme) {
     justifyContent: "center",
     padding: 24,
   },
+  splashPanel: {
+    width: "100%",
+    maxWidth: 420,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: theme.border,
+    backgroundColor: theme.surfaceCard,
+    paddingVertical: 30,
+    paddingHorizontal: 28,
+    alignItems: "center",
+    shadowColor: theme.shadow,
+    shadowOpacity: 0.38,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 16 },
+    elevation: 10,
+  },
+  splashTitle: {
+    color: theme.text,
+    fontSize: 34,
+    fontWeight: "800",
+    letterSpacing: 0.4,
+    marginTop: 4,
+  },
+  splashSubtitle: {
+    marginTop: 8,
+    color: theme.textMuted,
+    fontSize: 13,
+    textAlign: "center",
+  },
+  splashLoaderRow: {
+    marginTop: 18,
+    width: "100%",
+    height: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: theme.border,
+    backgroundColor: theme.surfaceHeader,
+    overflow: "hidden",
+  },
+  splashLoaderBar: {
+    width: "42%",
+    height: "100%",
+    borderRadius: 999,
+    backgroundColor: theme.accent,
+  },
+  splashStatus: {
+    marginTop: 12,
+    color: theme.textMuted,
+    fontSize: 11,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+  },
   loginCard: {
     width: "100%",
     maxWidth: 420,
     alignSelf: "center",
-    borderRadius: 26,
+    borderRadius: 30,
     borderWidth: 1,
     borderColor: theme.border,
-    padding: 28,
+    padding: 30,
     overflow: "hidden",
     shadowColor: theme.shadow,
-    shadowOpacity: 0.4,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 14 },
-    elevation: 8,
+    shadowOpacity: 0.45,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 16 },
+    elevation: 10,
   },
   loginCardGradient: {
     ...StyleSheet.absoluteFillObject,
@@ -1680,17 +1917,18 @@ function createStyles(theme) {
   loginHeader: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 14,
+    marginBottom: 16,
   },
   loginTitle: {
     color: theme.text,
-    fontSize: 22,
-    fontWeight: "700",
+    fontSize: 26,
+    fontWeight: "800",
+    letterSpacing: 0.4,
   },
   loginSubtitle: {
     color: theme.textMuted,
-    marginTop: 2,
-    fontSize: 12,
+    marginTop: 3,
+    fontSize: 13,
   },
   loginToolbar: {
     flexDirection: "row",
@@ -1704,12 +1942,12 @@ function createStyles(theme) {
     borderWidth: 1,
     borderColor: theme.borderLight,
     backgroundColor: theme.surfaceSoft,
-    padding: 10,
+    padding: 11,
     marginRight: 10,
   },
   loginHintText: {
     color: theme.textMuted,
-    fontSize: 11,
+    fontSize: 12,
   },
   languageButton: {
     borderRadius: 14,
@@ -1731,7 +1969,7 @@ function createStyles(theme) {
     marginBottom: 6,
   },
   input: {
-    height: 46,
+    height: 48,
     borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 10,
@@ -1751,7 +1989,7 @@ function createStyles(theme) {
     marginRight: 10,
   },
   passwordToggle: {
-    height: 46,
+    height: 48,
     minWidth: 56,
     borderRadius: 14,
     borderWidth: 1,
@@ -1782,15 +2020,15 @@ function createStyles(theme) {
     marginTop: 12,
   },
   loginButton: {
-    height: 50,
+    height: 52,
     alignItems: "center",
     justifyContent: "center",
   },
   loginButtonText: {
     color: theme.textInverse,
-    fontWeight: "700",
+    fontWeight: "800",
     fontSize: 15,
-    letterSpacing: 0.3,
+    letterSpacing: 0.4,
   },
   loginSignup: {
     marginTop: 16,
@@ -2104,22 +2342,92 @@ function createStyles(theme) {
     marginTop: 4,
     lineHeight: 16,
   },
-  mailSyncAddressRow: {
+  mailSyncStatus: {
+    marginTop: 8,
+  },
+  mailProviders: {
     marginTop: 10,
-    paddingVertical: 8,
+  },
+  mailProviderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: theme.borderLight,
+    backgroundColor: theme.surfaceSoft,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+  },
+  mailProviderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    paddingRight: 8,
+  },
+  mailProviderBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 10,
+  },
+  mailProviderBadgeGmail: {
+    backgroundColor: "rgba(234, 88, 12, 0.2)",
+    borderWidth: 1,
+    borderColor: "rgba(253, 186, 116, 0.35)",
+  },
+  mailProviderBadgeOutlook: {
+    backgroundColor: "rgba(59, 130, 246, 0.2)",
+    borderWidth: 1,
+    borderColor: "rgba(147, 197, 253, 0.35)",
+  },
+  mailProviderBadgeGeneric: {
+    backgroundColor: "rgba(99, 102, 241, 0.2)",
+    borderWidth: 1,
+    borderColor: "rgba(165, 180, 252, 0.35)",
+  },
+  mailProviderBadgeText: {
+    color: theme.text,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  mailProviderName: {
+    color: theme.text,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  mailProviderStatus: {
+    color: theme.textMuted,
+    fontSize: 11,
+    marginTop: 2,
+  },
+  mailProviderEmail: {
+    color: theme.text,
+    fontSize: 11,
+    marginTop: 2,
+  },
+  mailProviderActions: {
+    marginLeft: 6,
+  },
+  mailConnectProviderRow: {
+    marginTop: 8,
+    paddingVertical: 6,
     paddingHorizontal: 10,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: theme.borderLight,
     backgroundColor: theme.surfaceSoft,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
-  mailSyncAddress: {
+  mailConnectProviderValue: {
     color: theme.text,
     fontSize: 12,
     fontWeight: "600",
-  },
-  mailSyncStatus: {
-    marginTop: 8,
   },
   ghostButton: {
     borderRadius: 999,
@@ -2201,6 +2509,11 @@ function createStyles(theme) {
     color: theme.textMuted,
     fontSize: 11,
   },
+  invoiceRowFooter: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    marginTop: 8,
+  },
   statusBadge: {
     paddingVertical: 3,
     paddingHorizontal: 8,
@@ -2254,11 +2567,18 @@ function createStyles(theme) {
   settingsPanel: {
     width: "100%",
     maxWidth: 480,
+    maxHeight: "88%",
     borderRadius: 20,
     borderWidth: 1,
     borderColor: theme.border,
     backgroundColor: theme.surface,
     padding: 16,
+  },
+  settingsScroll: {
+    width: "100%",
+  },
+  settingsScrollContent: {
+    paddingBottom: 12,
   },
   modalHeader: {
     flexDirection: "row",
@@ -2406,18 +2726,6 @@ function createStyles(theme) {
     fontWeight: "600",
     letterSpacing: 0.6,
   },
-  dangerButton: {
-    borderRadius: 999,
-    backgroundColor: theme.danger,
-    paddingVertical: 10,
-    alignItems: "center",
-    marginTop: 10,
-  },
-  dangerButtonText: {
-    color: theme.textInverse,
-    fontWeight: "700",
-    fontSize: 13,
-  },
   modalScroll: {
     maxHeight: 420,
   },
@@ -2455,6 +2763,18 @@ function createStyles(theme) {
     justifyContent: "space-between",
     alignItems: "center",
     marginTop: 8,
+  },
+  modalFooterRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 12,
+  },
+  errorText: {
+    marginTop: 6,
+    color: theme.danger,
+    fontSize: 12,
   },
   languagePanel: {
     width: "100%",
@@ -2495,6 +2815,571 @@ function createStyles(theme) {
   });
 }
 
+const mailSyncI18n = {
+  en: {
+    sync_now: "Sync now",
+    mail_sync_panel_title: "Email sync",
+    mail_sync_panel_desc:
+      "Connect your email account to sync invoices automatically.",
+    mail_sync_panel_empty: "Connect an email account to enable sync.",
+    mail_sync_panel_ready: "Email sync is active.",
+    mail_sync_panel_syncing: "Syncing inboxes...",
+    mail_sync_panel_error: "Email sync failed. Try again.",
+    mail_sync_panel_last_sync: "Last sync: {{time}}",
+    mail_sync_notice_browser: "Finish connecting in your browser.",
+    mail_sync_connect: "Connect email",
+    mail_sync_connect_title: "Connect email",
+    mail_sync_connect_desc:
+      "Enter the email address you want to sync. We'll detect the provider and open the secure sign-in flow.",
+    mail_sync_connect_email_label: "Email address",
+    mail_sync_connect_email_placeholder: "you@company.com",
+    mail_sync_connect_provider_label: "Provider",
+    mail_sync_connect_provider_detecting: "Detecting...",
+    mail_sync_connect_provider_gmail: "Gmail",
+    mail_sync_connect_provider_outlook: "Outlook",
+    mail_sync_connect_provider_unknown: "Unknown",
+    mail_sync_connect_cancel: "Cancel",
+    mail_sync_connect_continue: "Continue",
+    mail_sync_connect_error_invalid: "Enter a valid email address.",
+    mail_sync_connect_error_unsupported:
+      "This provider isn't supported yet. Use Gmail or Outlook.",
+    mail_sync_connect_error_outlook_plan: "Outlook requires the Business plan.",
+    mail_sync_connect_gmail: "Connect Gmail",
+    mail_sync_connect_outlook: "Connect Outlook",
+    mail_sync_disconnect: "Disconnect",
+    mail_sync_status_connected: "Connected",
+    mail_sync_status_not_connected: "Not connected",
+    mail_sync_status_pending: "Pending authorization...",
+    mail_sync_status_error: "Connection error",
+    mail_sync_error_config:
+      "Mail sync isn't configured. Add OAuth credentials in Firebase Functions.",
+    mail_sync_error_auth: "Sign in again to connect your mailbox.",
+  },
+  ro: {
+    sync_now: "Sincronizeaza acum",
+    mail_sync_panel_title: "Sincronizare email",
+    mail_sync_panel_desc:
+      "Conecteaza contul de email pentru a sincroniza automat facturile.",
+    mail_sync_panel_empty: "Conecteaza un cont de email pentru sincronizare.",
+    mail_sync_panel_ready: "Sincronizarea email este activa.",
+    mail_sync_panel_syncing: "Se sincronizeaza inboxurile...",
+    mail_sync_panel_error: "Sincronizarea a esuat. Incearca din nou.",
+    mail_sync_panel_last_sync: "Ultima sincronizare: {{time}}",
+    mail_sync_notice_browser: "Finalizeaza conectarea in browser.",
+    mail_sync_connect: "Conecteaza email",
+    mail_sync_connect_title: "Conecteaza email",
+    mail_sync_connect_desc:
+      "Introdu adresa de email pe care vrei sa o sincronizezi. Detectam furnizorul si deschidem autentificarea securizata.",
+    mail_sync_connect_email_label: "Adresa de email",
+    mail_sync_connect_email_placeholder: "nume@companie.ro",
+    mail_sync_connect_provider_label: "Furnizor",
+    mail_sync_connect_provider_detecting: "Se detecteaza...",
+    mail_sync_connect_provider_gmail: "Gmail",
+    mail_sync_connect_provider_outlook: "Outlook",
+    mail_sync_connect_provider_unknown: "Necunoscut",
+    mail_sync_connect_cancel: "Renunta",
+    mail_sync_connect_continue: "Continua",
+    mail_sync_connect_error_invalid: "Introdu o adresa de email valida.",
+    mail_sync_connect_error_unsupported:
+      "Furnizorul nu este suportat inca. Foloseste Gmail sau Outlook.",
+    mail_sync_connect_error_outlook_plan: "Outlook necesita planul Business.",
+    mail_sync_connect_gmail: "Conecteaza Gmail",
+    mail_sync_connect_outlook: "Conecteaza Outlook",
+    mail_sync_disconnect: "Deconecteaza",
+    mail_sync_status_connected: "Conectat",
+    mail_sync_status_not_connected: "Neconectat",
+    mail_sync_status_pending: "In asteptare...",
+    mail_sync_status_error: "Eroare de conexiune",
+    mail_sync_error_config:
+      "Sincronizarea email nu e configurata. Adauga credentialele OAuth in Firebase Functions.",
+    mail_sync_error_auth: "Autentifica-te din nou pentru a conecta inboxul.",
+  },
+  hu: {
+    sync_now: "Szinkronizalas most",
+    mail_sync_panel_title: "Email szinkron",
+    mail_sync_panel_desc:
+      "Csatlakoztasd az e-mail fiokodat a szamlak automatikus szinkronjahoz.",
+    mail_sync_panel_empty: "A szinkronhoz csatlakoztass egy email fiokot.",
+    mail_sync_panel_ready: "Az email szinkron aktiv.",
+    mail_sync_panel_syncing: "Postafiokok szinkronizalasa...",
+    mail_sync_panel_error: "A szinkron sikertelen. Probald ujra.",
+    mail_sync_panel_last_sync: "Utolso szinkron: {{time}}",
+    mail_sync_notice_browser: "Fejezd be a csatlakozast a bongeszoben.",
+    mail_sync_connect: "E-mail csatlakoztatasa",
+    mail_sync_connect_title: "E-mail csatlakoztatasa",
+    mail_sync_connect_desc:
+      "Add meg a szinkronizalni kivant e-mail cimet. Felismerjuk a szolgaltatot es megnyitjuk a biztonsagos bejelentkezest.",
+    mail_sync_connect_email_label: "E-mail cim",
+    mail_sync_connect_email_placeholder: "nev@ceg.hu",
+    mail_sync_connect_provider_label: "Szolgaltato",
+    mail_sync_connect_provider_detecting: "Felismeres...",
+    mail_sync_connect_provider_gmail: "Gmail",
+    mail_sync_connect_provider_outlook: "Outlook",
+    mail_sync_connect_provider_unknown: "Ismeretlen",
+    mail_sync_connect_cancel: "Megse",
+    mail_sync_connect_continue: "Folytatas",
+    mail_sync_connect_error_invalid: "Adj meg ervenyes e-mail cimet.",
+    mail_sync_connect_error_unsupported:
+      "Ez a szolgaltato meg nem tamogatott. Hasznald a Gmailt vagy az Outlookot.",
+    mail_sync_connect_error_outlook_plan: "Az Outlookhoz Business csomag kell.",
+    mail_sync_connect_gmail: "Gmail csatlakoztatasa",
+    mail_sync_connect_outlook: "Outlook csatlakoztatasa",
+    mail_sync_disconnect: "Levalasztas",
+    mail_sync_status_connected: "Csatlakozva",
+    mail_sync_status_not_connected: "Nincs csatlakoztatva",
+    mail_sync_status_pending: "Jovahagyas folyamatban...",
+    mail_sync_status_error: "Csatlakozasi hiba",
+  },
+  fr: {
+    sync_now: "Synchroniser maintenant",
+    mail_sync_panel_title: "Synchronisation e-mail",
+    mail_sync_panel_desc:
+      "Connectez votre compte e-mail pour synchroniser automatiquement les factures.",
+    mail_sync_panel_empty:
+      "Connectez un compte e-mail pour activer la synchronisation.",
+    mail_sync_panel_ready: "La synchronisation e-mail est active.",
+    mail_sync_panel_syncing: "Synchronisation des boites de reception...",
+    mail_sync_panel_error: "Echec de la synchronisation. Reessayez.",
+    mail_sync_panel_last_sync: "Derniere synchro : {{time}}",
+    mail_sync_notice_browser: "Terminez la connexion dans le navigateur.",
+    mail_sync_connect: "Connecter l'e-mail",
+    mail_sync_connect_title: "Connecter l'e-mail",
+    mail_sync_connect_desc:
+      "Saisissez l'adresse e-mail a synchroniser. Nous detectons le fournisseur et ouvrons la connexion securisee.",
+    mail_sync_connect_email_label: "Adresse e-mail",
+    mail_sync_connect_email_placeholder: "nom@entreprise.fr",
+    mail_sync_connect_provider_label: "Fournisseur",
+    mail_sync_connect_provider_detecting: "Detection...",
+    mail_sync_connect_provider_gmail: "Gmail",
+    mail_sync_connect_provider_outlook: "Outlook",
+    mail_sync_connect_provider_unknown: "Inconnu",
+    mail_sync_connect_cancel: "Annuler",
+    mail_sync_connect_continue: "Continuer",
+    mail_sync_connect_error_invalid: "Saisissez une adresse e-mail valide.",
+    mail_sync_connect_error_unsupported:
+      "Ce fournisseur n'est pas encore pris en charge. Utilisez Gmail ou Outlook.",
+    mail_sync_connect_error_outlook_plan: "Outlook necessite le plan Business.",
+    mail_sync_connect_gmail: "Connecter Gmail",
+    mail_sync_connect_outlook: "Connecter Outlook",
+    mail_sync_disconnect: "Deconnecter",
+    mail_sync_status_connected: "Connecte",
+    mail_sync_status_not_connected: "Non connecte",
+    mail_sync_status_pending: "Autorisation en attente...",
+    mail_sync_status_error: "Erreur de connexion",
+  },
+  de: {
+    sync_now: "Jetzt synchronisieren",
+    mail_sync_panel_title: "E-Mail-Sync",
+    mail_sync_panel_desc:
+      "Verbinde dein E-Mail-Konto, um Rechnungen automatisch zu synchronisieren.",
+    mail_sync_panel_empty:
+      "Verbinde ein E-Mail-Konto, um die Synchronisierung zu aktivieren.",
+    mail_sync_panel_ready: "E-Mail-Sync ist aktiv.",
+    mail_sync_panel_syncing: "Postfacher werden synchronisiert...",
+    mail_sync_panel_error: "Synchronisierung fehlgeschlagen. Bitte erneut versuchen.",
+    mail_sync_panel_last_sync: "Letzte Synchronisierung: {{time}}",
+    mail_sync_notice_browser: "Schliesse die Verbindung im Browser ab.",
+    mail_sync_connect: "E-Mail verbinden",
+    mail_sync_connect_title: "E-Mail verbinden",
+    mail_sync_connect_desc:
+      "Gib die E-Mail-Adresse ein, die du synchronisieren willst. Wir erkennen den Anbieter und oeffnen die sichere Anmeldung.",
+    mail_sync_connect_email_label: "E-Mail-Adresse",
+    mail_sync_connect_email_placeholder: "name@firma.de",
+    mail_sync_connect_provider_label: "Anbieter",
+    mail_sync_connect_provider_detecting: "Erkennen...",
+    mail_sync_connect_provider_gmail: "Gmail",
+    mail_sync_connect_provider_outlook: "Outlook",
+    mail_sync_connect_provider_unknown: "Unbekannt",
+    mail_sync_connect_cancel: "Abbrechen",
+    mail_sync_connect_continue: "Weiter",
+    mail_sync_connect_error_invalid: "Bitte eine gueltige E-Mail-Adresse eingeben.",
+    mail_sync_connect_error_unsupported:
+      "Dieser Anbieter wird noch nicht unterstuetzt. Nutze Gmail oder Outlook.",
+    mail_sync_connect_error_outlook_plan: "Outlook erfordert den Business-Plan.",
+    mail_sync_connect_gmail: "Gmail verbinden",
+    mail_sync_connect_outlook: "Outlook verbinden",
+    mail_sync_disconnect: "Trennen",
+    mail_sync_status_connected: "Verbunden",
+    mail_sync_status_not_connected: "Nicht verbunden",
+    mail_sync_status_pending: "Ausstehende Freigabe...",
+    mail_sync_status_error: "Verbindungsfehler",
+  },
+  it: {
+    sync_now: "Sincronizza ora",
+    mail_sync_panel_title: "Sync email",
+    mail_sync_panel_desc:
+      "Collega il tuo account email per sincronizzare automaticamente le fatture.",
+    mail_sync_panel_empty:
+      "Collega un account email per abilitare la sincronizzazione.",
+    mail_sync_panel_ready: "La sincronizzazione email e attiva.",
+    mail_sync_panel_syncing: "Sincronizzazione caselle di posta...",
+    mail_sync_panel_error: "Sincronizzazione non riuscita. Riprova.",
+    mail_sync_panel_last_sync: "Ultima sincronizzazione: {{time}}",
+    mail_sync_notice_browser: "Completa la connessione nel browser.",
+    mail_sync_connect: "Connetti email",
+    mail_sync_connect_title: "Connetti email",
+    mail_sync_connect_desc:
+      "Inserisci l'indirizzo email da sincronizzare. Rileviamo il provider e apriamo l'accesso sicuro.",
+    mail_sync_connect_email_label: "Indirizzo email",
+    mail_sync_connect_email_placeholder: "nome@azienda.it",
+    mail_sync_connect_provider_label: "Provider",
+    mail_sync_connect_provider_detecting: "Rilevamento...",
+    mail_sync_connect_provider_gmail: "Gmail",
+    mail_sync_connect_provider_outlook: "Outlook",
+    mail_sync_connect_provider_unknown: "Sconosciuto",
+    mail_sync_connect_cancel: "Annulla",
+    mail_sync_connect_continue: "Continua",
+    mail_sync_connect_error_invalid: "Inserisci un indirizzo email valido.",
+    mail_sync_connect_error_unsupported:
+      "Provider non ancora supportato. Usa Gmail o Outlook.",
+    mail_sync_connect_error_outlook_plan: "Outlook richiede il piano Business.",
+    mail_sync_connect_gmail: "Connetti Gmail",
+    mail_sync_connect_outlook: "Connetti Outlook",
+    mail_sync_disconnect: "Disconnetti",
+    mail_sync_status_connected: "Connesso",
+    mail_sync_status_not_connected: "Non connesso",
+    mail_sync_status_pending: "Autorizzazione in corso...",
+    mail_sync_status_error: "Errore di connessione",
+  },
+  tr: {
+    sync_now: "Simdi senkronize et",
+    mail_sync_panel_title: "E-posta senkronu",
+    mail_sync_panel_desc:
+      "Faturalari otomatik senkronize etmek icin e-posta hesabini bagla.",
+    mail_sync_panel_empty: "Senkron icin bir e-posta hesabi baglayin.",
+    mail_sync_panel_ready: "E-posta senkronu aktif.",
+    mail_sync_panel_syncing: "Gelen kutulari senkronize ediliyor...",
+    mail_sync_panel_error: "Senkronizasyon basarisiz. Tekrar deneyin.",
+    mail_sync_panel_last_sync: "Son senkron: {{time}}",
+    mail_sync_notice_browser: "Baglantiyi tarayicida tamamlayin.",
+    mail_sync_connect: "E-posta bagla",
+    mail_sync_connect_title: "E-posta bagla",
+    mail_sync_connect_desc:
+      "Senkronize etmek istedigin e-posta adresini gir. Saglayiciyi algilar ve guvenli girisi acariz.",
+    mail_sync_connect_email_label: "E-posta adresi",
+    mail_sync_connect_email_placeholder: "ad@firma.com",
+    mail_sync_connect_provider_label: "Saglayici",
+    mail_sync_connect_provider_detecting: "Algilaniyor...",
+    mail_sync_connect_provider_gmail: "Gmail",
+    mail_sync_connect_provider_outlook: "Outlook",
+    mail_sync_connect_provider_unknown: "Bilinmiyor",
+    mail_sync_connect_cancel: "Iptal",
+    mail_sync_connect_continue: "Devam",
+    mail_sync_connect_error_invalid: "Gecerli bir e-posta adresi gir.",
+    mail_sync_connect_error_unsupported:
+      "Bu saglayici henuz desteklenmiyor. Gmail veya Outlook kullan.",
+    mail_sync_connect_error_outlook_plan: "Outlook icin Business plan gerekli.",
+    mail_sync_connect_gmail: "Gmail bagla",
+    mail_sync_connect_outlook: "Outlook bagla",
+    mail_sync_disconnect: "Baglantiyi kes",
+    mail_sync_status_connected: "Bagli",
+    mail_sync_status_not_connected: "Bagli degil",
+    mail_sync_status_pending: "Yetkilendirme bekleniyor...",
+    mail_sync_status_error: "Baglanti hatasi",
+  },
+  zh: {
+    sync_now: "立即同步",
+    mail_sync_panel_title: "邮箱同步",
+    mail_sync_panel_desc: "连接邮箱账户以自动同步发票。",
+    mail_sync_panel_empty: "连接邮箱账户以启用同步。",
+    mail_sync_panel_ready: "邮箱同步已启用。",
+    mail_sync_panel_syncing: "正在同步收件箱...",
+    mail_sync_panel_error: "同步失败，请重试。",
+    mail_sync_panel_last_sync: "上次同步：{{time}}",
+    mail_sync_notice_browser: "请在浏览器中完成连接。",
+    mail_sync_connect: "连接邮箱",
+    mail_sync_connect_title: "连接邮箱",
+    mail_sync_connect_desc:
+      "输入要同步的邮箱地址。我们将识别服务商并打开安全登录。",
+    mail_sync_connect_email_label: "邮箱地址",
+    mail_sync_connect_email_placeholder: "name@company.com",
+    mail_sync_connect_provider_label: "服务商",
+    mail_sync_connect_provider_detecting: "识别中...",
+    mail_sync_connect_provider_gmail: "Gmail",
+    mail_sync_connect_provider_outlook: "Outlook",
+    mail_sync_connect_provider_unknown: "未知",
+    mail_sync_connect_cancel: "取消",
+    mail_sync_connect_continue: "继续",
+    mail_sync_connect_error_invalid: "请输入有效的邮箱地址。",
+    mail_sync_connect_error_unsupported:
+      "暂不支持该服务商，请使用 Gmail 或 Outlook。",
+    mail_sync_connect_error_outlook_plan: "Outlook 需要 Business 套餐。",
+    mail_sync_connect_gmail: "连接 Gmail",
+    mail_sync_connect_outlook: "连接 Outlook",
+    mail_sync_disconnect: "断开连接",
+    mail_sync_status_connected: "已连接",
+    mail_sync_status_not_connected: "未连接",
+    mail_sync_status_pending: "等待授权...",
+    mail_sync_status_error: "连接错误",
+  },
+  ar: {
+    sync_now: "زامن الآن",
+    mail_sync_panel_title: "مزامنة البريد",
+    mail_sync_panel_desc: "اربط حساب بريدك لمزامنة الفواتير تلقائيا.",
+    mail_sync_panel_empty: "اربط حساب بريد لتفعيل المزامنة.",
+    mail_sync_panel_ready: "مزامنة البريد مفعلة.",
+    mail_sync_panel_syncing: "جار مزامنة صناديق البريد...",
+    mail_sync_panel_error: "فشلت المزامنة. حاول مرة أخرى.",
+    mail_sync_panel_last_sync: "آخر مزامنة: {{time}}",
+    mail_sync_notice_browser: "اكمل الربط في المتصفح.",
+    mail_sync_connect: "ربط البريد",
+    mail_sync_connect_title: "ربط البريد",
+    mail_sync_connect_desc:
+      "ادخل عنوان البريد الذي تريد مزامنته. سنحدد المزود ونفتح تسجيل الدخول الامن.",
+    mail_sync_connect_email_label: "عنوان البريد",
+    mail_sync_connect_email_placeholder: "name@company.com",
+    mail_sync_connect_provider_label: "المزود",
+    mail_sync_connect_provider_detecting: "جارٍ التعرف...",
+    mail_sync_connect_provider_gmail: "Gmail",
+    mail_sync_connect_provider_outlook: "Outlook",
+    mail_sync_connect_provider_unknown: "غير معروف",
+    mail_sync_connect_cancel: "الغاء",
+    mail_sync_connect_continue: "متابعة",
+    mail_sync_connect_error_invalid: "ادخل عنوان بريد صالح.",
+    mail_sync_connect_error_unsupported:
+      "هذا المزود غير مدعوم بعد. استخدم Gmail او Outlook.",
+    mail_sync_connect_error_outlook_plan: "Outlook يتطلب خطة Business.",
+    mail_sync_connect_gmail: "ربط Gmail",
+    mail_sync_connect_outlook: "ربط Outlook",
+    mail_sync_disconnect: "قطع الاتصال",
+    mail_sync_status_connected: "متصل",
+    mail_sync_status_not_connected: "غير متصل",
+    mail_sync_status_pending: "بانتظار التفويض...",
+    mail_sync_status_error: "خطأ في الاتصال",
+  },
+  ru: {
+    sync_now: "Синхронизировать сейчас",
+    mail_sync_panel_title: "Синхронизация почты",
+    mail_sync_panel_desc:
+      "Подключите почтовый аккаунт для автоматической синхронизации счетов.",
+    mail_sync_panel_empty: "Подключите почтовый аккаунт для синхронизации.",
+    mail_sync_panel_ready: "Синхронизация почты активна.",
+    mail_sync_panel_syncing: "Синхронизация ящиков...",
+    mail_sync_panel_error: "Синхронизация не удалась. Повторите.",
+    mail_sync_panel_last_sync: "Последняя синхронизация: {{time}}",
+    mail_sync_notice_browser: "Завершите подключение в браузере.",
+    mail_sync_connect: "Подключить почту",
+    mail_sync_connect_title: "Подключить почту",
+    mail_sync_connect_desc:
+      "Введите адрес почты для синхронизации. Мы определим провайдера и откроем безопасный вход.",
+    mail_sync_connect_email_label: "Адрес почты",
+    mail_sync_connect_email_placeholder: "name@company.ru",
+    mail_sync_connect_provider_label: "Провайдер",
+    mail_sync_connect_provider_detecting: "Определяем...",
+    mail_sync_connect_provider_gmail: "Gmail",
+    mail_sync_connect_provider_outlook: "Outlook",
+    mail_sync_connect_provider_unknown: "Неизвестно",
+    mail_sync_connect_cancel: "Отмена",
+    mail_sync_connect_continue: "Продолжить",
+    mail_sync_connect_error_invalid: "Введите корректный адрес почты.",
+    mail_sync_connect_error_unsupported:
+      "Провайдер пока не поддерживается. Используйте Gmail или Outlook.",
+    mail_sync_connect_error_outlook_plan: "Outlook доступен только в плане Business.",
+    mail_sync_connect_gmail: "Подключить Gmail",
+    mail_sync_connect_outlook: "Подключить Outlook",
+    mail_sync_disconnect: "Отключить",
+    mail_sync_status_connected: "Подключено",
+    mail_sync_status_not_connected: "Не подключено",
+    mail_sync_status_pending: "Ожидание подтверждения...",
+    mail_sync_status_error: "Ошибка подключения",
+  },
+  es: {
+    sync_now: "Sincronizar ahora",
+    mail_sync_panel_title: "Sincronizacion de correo",
+    mail_sync_panel_desc:
+      "Conecta tu cuenta de correo para sincronizar facturas automaticamente.",
+    mail_sync_panel_empty:
+      "Conecta una cuenta de correo para habilitar la sincronizacion.",
+    mail_sync_panel_ready: "La sincronizacion de correo esta activa.",
+    mail_sync_panel_syncing: "Sincronizando bandejas de entrada...",
+    mail_sync_panel_error: "La sincronizacion fallo. Intentalo de nuevo.",
+    mail_sync_panel_last_sync: "Ultima sincronizacion: {{time}}",
+    mail_sync_notice_browser: "Completa la conexion en el navegador.",
+    mail_sync_connect: "Conectar correo",
+    mail_sync_connect_title: "Conectar correo",
+    mail_sync_connect_desc:
+      "Introduce el correo que quieres sincronizar. Detectaremos el proveedor y abriremos el acceso seguro.",
+    mail_sync_connect_email_label: "Correo electronico",
+    mail_sync_connect_email_placeholder: "nombre@empresa.com",
+    mail_sync_connect_provider_label: "Proveedor",
+    mail_sync_connect_provider_detecting: "Detectando...",
+    mail_sync_connect_provider_gmail: "Gmail",
+    mail_sync_connect_provider_outlook: "Outlook",
+    mail_sync_connect_provider_unknown: "Desconocido",
+    mail_sync_connect_cancel: "Cancelar",
+    mail_sync_connect_continue: "Continuar",
+    mail_sync_connect_error_invalid: "Introduce un correo valido.",
+    mail_sync_connect_error_unsupported:
+      "Este proveedor aun no es compatible. Usa Gmail u Outlook.",
+    mail_sync_connect_error_outlook_plan: "Outlook requiere el plan Business.",
+    mail_sync_connect_gmail: "Conectar Gmail",
+    mail_sync_connect_outlook: "Conectar Outlook",
+    mail_sync_disconnect: "Desconectar",
+    mail_sync_status_connected: "Conectado",
+    mail_sync_status_not_connected: "No conectado",
+    mail_sync_status_pending: "Esperando autorizacion...",
+    mail_sync_status_error: "Error de conexion",
+  },
+  ja: {
+    sync_now: "今すぐ同期",
+    mail_sync_panel_title: "メール同期",
+    mail_sync_panel_desc:
+      "メールアカウントを接続して請求書を自動同期します。",
+    mail_sync_panel_empty:
+      "同期を有効にするにはメールアカウントを接続してください。",
+    mail_sync_panel_ready: "メール同期が有効です。",
+    mail_sync_panel_syncing: "受信トレイを同期中...",
+    mail_sync_panel_error: "同期に失敗しました。再試行してください。",
+    mail_sync_panel_last_sync: "最終同期: {{time}}",
+    mail_sync_notice_browser: "ブラウザで接続を完了してください。",
+    mail_sync_connect: "メールを接続",
+    mail_sync_connect_title: "メールを接続",
+    mail_sync_connect_desc:
+      "同期したいメールアドレスを入力してください。プロバイダーを判定して安全なログインを開きます。",
+    mail_sync_connect_email_label: "メールアドレス",
+    mail_sync_connect_email_placeholder: "name@company.com",
+    mail_sync_connect_provider_label: "プロバイダー",
+    mail_sync_connect_provider_detecting: "判定中...",
+    mail_sync_connect_provider_gmail: "Gmail",
+    mail_sync_connect_provider_outlook: "Outlook",
+    mail_sync_connect_provider_unknown: "不明",
+    mail_sync_connect_cancel: "キャンセル",
+    mail_sync_connect_continue: "続行",
+    mail_sync_connect_error_invalid: "有効なメールアドレスを入力してください。",
+    mail_sync_connect_error_unsupported:
+      "このプロバイダーは未対応です。Gmail または Outlook を使用してください。",
+    mail_sync_connect_error_outlook_plan: "Outlook は Business プランが必要です。",
+    mail_sync_connect_gmail: "Gmail を接続",
+    mail_sync_connect_outlook: "Outlook を接続",
+    mail_sync_disconnect: "切断",
+    mail_sync_status_connected: "接続済み",
+    mail_sync_status_not_connected: "未接続",
+    mail_sync_status_pending: "承認待ち...",
+    mail_sync_status_error: "接続エラー",
+  },
+};
+
+Object.keys(mailSyncI18n).forEach((lang) => {
+  translations[lang] = { ...translations[lang], ...mailSyncI18n[lang] };
+});
+
+const mailSyncPlanI18n = {
+  en: {
+    mail_sync_connect_locked: "Business plan",
+    mail_sync_status_locked: "Business plan required",
+    mail_sync_outlook_business_hint: "Outlook is available on Business plan.",
+  },
+  ro: {
+    mail_sync_connect_locked: "Plan Business",
+    mail_sync_status_locked: "Necesita plan Business",
+    mail_sync_outlook_business_hint: "Outlook este disponibil pe planul Business.",
+  },
+  hu: {
+    mail_sync_connect_locked: "Business csomag",
+    mail_sync_status_locked: "Business csomag szukseges",
+    mail_sync_outlook_business_hint:
+      "Az Outlook a Business csomagban erheto el.",
+  },
+  fr: {
+    mail_sync_connect_locked: "Plan Business",
+    mail_sync_status_locked: "Plan Business requis",
+    mail_sync_outlook_business_hint:
+      "Outlook est disponible avec le plan Business.",
+  },
+  de: {
+    mail_sync_connect_locked: "Business-Plan",
+    mail_sync_status_locked: "Business-Plan erforderlich",
+    mail_sync_outlook_business_hint: "Outlook ist im Business-Plan verfugbar.",
+  },
+  it: {
+    mail_sync_connect_locked: "Piano Business",
+    mail_sync_status_locked: "Richiede piano Business",
+    mail_sync_outlook_business_hint:
+      "Outlook e disponibile con il piano Business.",
+  },
+  tr: {
+    mail_sync_connect_locked: "Business plan",
+    mail_sync_status_locked: "Business plan gerekli",
+    mail_sync_outlook_business_hint: "Outlook Business planda kullanilabilir.",
+  },
+  zh: {
+    mail_sync_connect_locked: "Business 套餐",
+    mail_sync_status_locked: "需要 Business 套餐",
+    mail_sync_outlook_business_hint: "Outlook 仅在 Business 套餐可用。",
+  },
+  ar: {
+    mail_sync_connect_locked: "خطة Business",
+    mail_sync_status_locked: "يتطلب خطة Business",
+    mail_sync_outlook_business_hint: "Outlook متاح في خطة Business.",
+  },
+  ru: {
+    mail_sync_connect_locked: "План Business",
+    mail_sync_status_locked: "Нужен план Business",
+    mail_sync_outlook_business_hint: "Outlook доступен в плане Business.",
+  },
+  es: {
+    mail_sync_connect_locked: "Plan Business",
+    mail_sync_status_locked: "Requiere plan Business",
+    mail_sync_outlook_business_hint: "Outlook esta disponible en el plan Business.",
+  },
+  ja: {
+    mail_sync_connect_locked: "Business プラン",
+    mail_sync_status_locked: "Business プランが必要",
+    mail_sync_outlook_business_hint: "Outlook は Business プランで利用できます。",
+  },
+};
+
+Object.keys(mailSyncPlanI18n).forEach((lang) => {
+  translations[lang] = { ...translations[lang], ...mailSyncPlanI18n[lang] };
+});
+
+const invoiceDeleteI18n = {
+  en: {
+    table_actions_delete: "Delete",
+    delete_invalid_invoices: "Delete invalid",
+    invoice_delete_confirm: "Delete this invoice?",
+    invoice_delete_error: "Could not delete invoice.",
+    invoice_delete_invalid_confirm:
+      "Delete {{count}} invalid invoice(s) with missing data?",
+    invoice_delete_invalid_done: "Deleted {{count}} invalid invoice(s).",
+    invoice_delete_invalid_none: "No invalid invoices found.",
+    invoice_delete_invalid_partial:
+      "Deleted {{deleted}} invoice(s). Failed: {{failed}}.",
+  },
+  ro: {
+    table_actions_delete: "Șterge",
+    delete_invalid_invoices: "Șterge nule",
+    invoice_delete_confirm: "Ștergi această factură?",
+    invoice_delete_error: "Factura nu a putut fi ștearsă.",
+    invoice_delete_invalid_confirm:
+      "Ștergi {{count}} facturi invalide cu date lipsă?",
+    invoice_delete_invalid_done: "Au fost șterse {{count}} facturi invalide.",
+    invoice_delete_invalid_none: "Nu există facturi invalide.",
+    invoice_delete_invalid_partial:
+      "Au fost șterse {{deleted}} facturi. Eșuate: {{failed}}.",
+  },
+};
+
+Object.keys(invoiceDeleteI18n).forEach((lang) => {
+  translations[lang] = { ...translations[lang], ...invoiceDeleteI18n[lang] };
+});
+
+Object.keys(translations).forEach((lang) => {
+  const currentPack = translations[lang] || {};
+  const englishPack = translations.en || {};
+  Object.keys(featureLocales[lang] || {}).forEach((key) => {
+    if (!currentPack[key] || currentPack[key] === englishPack[key]) {
+      currentPack[key] = featureLocales[lang][key];
+    }
+  });
+  translations[lang] = currentPack;
+});
+
+const translationsBase = translations.en || {};
+Object.keys(translations).forEach((lang) => {
+  translations[lang] = { ...translationsBase, ...(translations[lang] || {}) };
+});
+
 function resolveDate(value) {
   if (!value) return null;
   if (value instanceof Date) return value;
@@ -2521,6 +3406,155 @@ function formatAmount(amount, currency) {
   return `${safe.toFixed(2)} ${unit}`;
 }
 
+function hasTextValue(value) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function isMeaningfulInvoiceData(invoice) {
+  if (!invoice || typeof invoice !== "object") return false;
+  const amount = Number(invoice.amount);
+  const hasAmount = Number.isFinite(amount) && amount > 0;
+  const hasCompany = hasTextValue(invoice.company);
+  const hasNumber = hasTextValue(invoice.number);
+  const hasIssueDate = !!resolveDate(invoice.issueDate);
+  const hasDueDate = !!resolveDate(invoice.dueDate);
+  if (hasAmount) return true;
+  if (hasNumber && (hasCompany || hasIssueDate || hasDueDate)) return true;
+  if (hasCompany && (hasIssueDate || hasDueDate)) return true;
+  return false;
+}
+
+const SUBSCRIPTION_PROVIDER_HINTS = [
+  "netflix",
+  "spotify",
+  "youtube premium",
+  "google one",
+  "icloud",
+  "prime video",
+  "amazon prime",
+  "yoxo",
+  "orange",
+  "vodafone",
+  "telekom",
+  "digi",
+  "enel",
+  "eon",
+  "engie",
+  "adobe",
+  "microsoft 365",
+  "office 365",
+  "dropbox",
+  "notion",
+  "canva",
+  "openai",
+  "chatgpt plus",
+];
+
+const SUBSCRIPTION_RECURRING_HINTS = [
+  "subscription",
+  "recurring",
+  "monthly",
+  "annual",
+  "yearly",
+  "renewal",
+  "membership",
+  "abonament",
+  "recurent",
+  "lunar",
+  "anual",
+];
+
+const NON_SUBSCRIPTION_HINTS = [
+  "order",
+  "commande",
+  "comanda",
+  "booking",
+  "reservation",
+  "flight",
+  "hotel",
+  "ticket",
+  "bilet",
+  "itinerary",
+  "shipping",
+  "wizzair",
+  "ryanair",
+  "airbnb",
+];
+
+function normalizeInvoiceStatus(value) {
+  const status = String(value || "").toLowerCase();
+  if (status === "paid") return "paid";
+  if (status === "overdue") return "overdue";
+  return "unpaid";
+}
+
+function isPastDueDate(value) {
+  const dueDate = resolveDate(value);
+  if (!dueDate) return false;
+  const dueEnd = new Date(
+    dueDate.getFullYear(),
+    dueDate.getMonth(),
+    dueDate.getDate(),
+    23,
+    59,
+    59,
+    999
+  );
+  return dueEnd.getTime() < Date.now();
+}
+
+function getInvoiceEffectiveStatus(invoice) {
+  const status = normalizeInvoiceStatus(invoice && invoice.status);
+  if (status === "paid") return "paid";
+  if (isPastDueDate(invoice && invoice.dueDate)) return "overdue";
+  if (status === "overdue" && !resolveDate(invoice && invoice.dueDate)) return "overdue";
+  return "unpaid";
+}
+
+function invoiceLooksLikeSubscription(invoice) {
+  if (!invoice || typeof invoice !== "object") return false;
+  if (invoice.recurring === true) return true;
+  if (String(invoice.invoiceType || "").toLowerCase() === "subscription") return true;
+
+  const category = String(invoice.category || "").toLowerCase();
+  if (
+    category.includes("subscription") ||
+    category.includes("abonament") ||
+    category.includes("membership") ||
+    category.includes("utility") ||
+    category.includes("telecom") ||
+    category.includes("saas")
+  ) {
+    return true;
+  }
+
+  const haystack = [
+    String(invoice.company || ""),
+    String(invoice.subject || ""),
+    String(invoice.from || ""),
+    String(invoice.emailPreview || ""),
+    String(invoice.sourceAccountEmail || ""),
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  if (!haystack) return false;
+  const hasProviderHint = SUBSCRIPTION_PROVIDER_HINTS.some((hint) =>
+    haystack.includes(hint)
+  );
+  const hasRecurringHint = SUBSCRIPTION_RECURRING_HINTS.some((hint) =>
+    haystack.includes(hint)
+  );
+  const hasNonSubscriptionHint = NON_SUBSCRIPTION_HINTS.some((hint) =>
+    haystack.includes(hint)
+  );
+
+  if (hasNonSubscriptionHint && !hasProviderHint && !hasRecurringHint) {
+    return false;
+  }
+  return hasProviderHint || hasRecurringHint;
+}
+
 function normalizeInvoiceDoc(docSnap) {
   const data = docSnap.data() || {};
   const issueDate = resolveDate(
@@ -2533,16 +3567,240 @@ function normalizeInvoiceDoc(docSnap) {
   const status = String(data.status || "unpaid").toLowerCase();
 
   return {
+    ...data,
     id: docSnap.id,
     company: data.company || data.vendor || "",
     category: data.category || "",
     number: data.number || data.invoiceNumber || "",
     issueDate,
     dueDate,
+    updatedAt: resolveDate(data.updatedAt),
     amount,
     currency: data.currency || "RON",
     status,
+    recurring: data.recurring === true,
+    invoiceType: data.invoiceType || "",
+    subject: data.subject || "",
+    from: data.from || "",
+    emailPreview: data.emailPreview || data.preview || "",
+    sourceAccountEmail: data.sourceAccountEmail || "",
   };
+}
+
+function normalizeProviderName(value) {
+  const provider = String(value || "").toLowerCase().trim();
+  if (provider === "google" || provider === "gmail") return "gmail";
+  if (provider === "outlook" || provider === "microsoft" || provider === "office365") {
+    return "outlook";
+  }
+  return provider;
+}
+
+function providerDisplayName(provider, t) {
+  if (provider === "gmail") return t("mail_sync_connect_provider_gmail");
+  if (provider === "outlook") return t("mail_sync_connect_provider_outlook");
+  const raw = String(provider || "").trim();
+  if (!raw || raw === "unknown") return t("mail_sync_connect_provider_unknown");
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
+function getMailAccountEntries(mailAccounts) {
+  return Object.entries(mailAccounts || {})
+    .map(([docId, data]) => {
+      const row = data || {};
+      const provider = normalizeProviderName(row.provider || "");
+      return {
+        accountId: row.accountId || docId,
+        provider: provider || "unknown",
+        data: row,
+      };
+    })
+    .sort((a, b) => {
+      const aConnected = !!(a.data && a.data.connected);
+      const bConnected = !!(b.data && b.data.connected);
+      if (aConnected !== bConnected) return bConnected ? 1 : -1;
+
+      const aProvider = String(a.provider || "");
+      const bProvider = String(b.provider || "");
+      if (aProvider !== bProvider) return aProvider.localeCompare(bProvider);
+
+      const aEmail = String((a.data && a.data.email) || "").toLowerCase();
+      const bEmail = String((b.data && b.data.email) || "").toLowerCase();
+      return aEmail.localeCompare(bEmail);
+    });
+}
+
+function hasMailAccountSyncIssue(account) {
+  if (!account || !account.connected) return false;
+  const syncStatus = String(account.lastSyncStatus || account.status || "").toLowerCase();
+  return syncStatus === "error";
+}
+
+function getMailProviderStatusLabel(account, providerAllowed, t) {
+  const safeAccount = account || {};
+  const connected = !!safeAccount.connected;
+  const syncStatus = String(safeAccount.lastSyncStatus || safeAccount.status || "").toLowerCase();
+
+  if (!providerAllowed && !connected) {
+    return t("mail_sync_status_locked");
+  }
+  if (!connected && syncStatus === "pending") {
+    return t("mail_sync_status_pending");
+  }
+  if (connected) {
+    return t("mail_sync_status_connected");
+  }
+  if (syncStatus === "error") {
+    return t("mail_sync_status_error");
+  }
+  return t("mail_sync_status_not_connected");
+}
+
+function offlineCacheKey(uid) {
+  return `${OFFLINE_CACHE_PREFIX}${uid || ""}`;
+}
+
+function offlineQueueKey(uid) {
+  return `${OFFLINE_QUEUE_PREFIX}${uid || ""}`;
+}
+
+function serializeForCache(value) {
+  if (value == null) return value;
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value?.toDate === "function") return value.toDate().toISOString();
+  if (Array.isArray(value)) return value.map(serializeForCache);
+  if (typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, serializeForCache(item)])
+    );
+  }
+  return value;
+}
+
+async function loadOfflineCache(uid) {
+  if (!uid) return null;
+  try {
+    const raw = await AsyncStorage.getItem(offlineCacheKey(uid));
+    if (!raw) return null;
+    const cache = JSON.parse(raw);
+    if (Array.isArray(cache.invoices)) {
+      cache.invoices = cache.invoices.map((invoice) => normalizeInvoiceDoc({
+        id: invoice.id, data: () => invoice,
+      }));
+    }
+    return cache;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function saveOfflineCache(uid, payload) {
+  if (!uid) return;
+  try {
+    await AsyncStorage.setItem(
+      offlineCacheKey(uid),
+      JSON.stringify({
+        savedAt: new Date().toISOString(),
+        ...serializeForCache(payload),
+      })
+    );
+  } catch (_) {
+    // cache is best-effort
+  }
+}
+
+async function getOfflineQueue(uid) {
+  if (!uid) return [];
+  try {
+    const raw = await AsyncStorage.getItem(offlineQueueKey(uid));
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) throw new Error("Invalid offline queue");
+    return parsed;
+  } catch (_) {
+    throw new Error("Offline changes could not be read on this device.");
+  }
+}
+
+async function setOfflineQueue(uid, queue) {
+  if (!uid) return;
+  try {
+    await AsyncStorage.setItem(offlineQueueKey(uid), JSON.stringify(queue || []));
+  } catch (_) {
+    throw new Error("Offline changes could not be saved on this device.");
+  }
+}
+
+const offlineQueueEngine = OfflineQueue.create({
+  read: getOfflineQueue, write: setOfflineQueue,
+  apply: async (uid, mutation) => {
+    if (auth.currentUser?.uid !== uid) throw new Error("Account changed");
+    await httpsCallable(functions, "applyOfflineMutation")({ mutation });
+  },
+});
+
+function normalizePhoneInput(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const plus = raw.startsWith("+") ? "+" : "";
+  return plus + raw.replace(/\D/g, "");
+}
+
+function isValidPhone(value) {
+  const normalized = normalizePhoneInput(value);
+  const digits = normalized.replace(/\D/g, "");
+  return normalized.startsWith("+") && digits.length >= 8 && digits.length <= 15;
+}
+
+function maskPhone(value) {
+  const normalized = normalizePhoneInput(value);
+  const digits = normalized.replace(/\D/g, "");
+  if (digits.length <= 4) return normalized;
+  return `+${digits.slice(0, 3)}${"*".repeat(Math.max(0, digits.length - 5))}${digits.slice(-2)}`;
+}
+
+function normalizeAccountPlan(plan) {
+  return String(plan || "").toLowerCase() === "business" ? "business" : "basic";
+}
+
+function workspaceSpaceForPlan(plan) {
+  return normalizeAccountPlan(plan) === "business" ? "business" : "home";
+}
+
+function reportFieldLabel(field, t) {
+  return t(`report_${field}`);
+}
+
+function escapeReportText(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
+}
+
+function reportFieldValue(invoice, field, locale, t, allInvoices) {
+  if (field === "issueDate") return formatDate(invoice.issueDate, locale);
+  if (field === "dueDate") return formatDate(invoice.dueDate, locale);
+  if (field === "amount") return formatAmount(invoice.amount, invoice.currency);
+  if (field === "status") return t(`invoice_status_${getInvoiceEffectiveStatus(invoice)}`);
+  if (field === "space") return t(`space_${invoice?.spaceId || "home"}`);
+  if (field === "evidence" || field === "cadence" || field === "risk") {
+    const enriched = Intelligence.enrichInvoice(invoice, allInvoices || []);
+    if (field === "evidence") return `${enriched.intelligence.evidence.confidence}%`;
+    if (field === "cadence") return t("cadence_" + (enriched.intelligence.recurrence.cadence || "unknown"));
+    if (field === "risk") return enriched.intelligence.risk.flags.map((flag) => t("risk_" + flag.code)).join(", ") || "-";
+  }
+  return invoice?.[field] ? String(invoice[field]) : "-";
+}
+
+function buildReportRows(invoices, fields, locale, t) {
+  return invoices
+    .filter(invoiceLooksLikeSubscription)
+    .filter(isMeaningfulInvoiceData)
+    .map((invoice) =>
+      Object.fromEntries(
+        fields.map((field) => [
+          reportFieldLabel(field, t),
+          reportFieldValue(invoice, field, locale, t, invoices),
+        ])
+      )
+    );
 }
 
 export default function App() {
@@ -2567,9 +3825,13 @@ export default function App() {
   const [languageVisible, setLanguageVisible] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState("");
-  const [mailSyncAddress, setMailSyncAddress] = useState("");
-  const [mailSyncStatus, setMailSyncStatus] = useState("idle");
-  const [mailSyncCopied, setMailSyncCopied] = useState(false);
+  const [mailAccounts, setMailAccounts] = useState({});
+  const [mailSyncNotice, setMailSyncNotice] = useState("");
+  const [mailConnectVisible, setMailConnectVisible] = useState(false);
+  const [mailConnectEmail, setMailConnectEmail] = useState("");
+  const [mailConnectProvider, setMailConnectProvider] = useState("unknown");
+  const [mailConnectError, setMailConnectError] = useState("");
+  const [mailConnectBusy, setMailConnectBusy] = useState(false);
   const [savingInvoice, setSavingInvoice] = useState(false);
   const [invoiceMessage, setInvoiceMessage] = useState("");
   const [invoiceError, setInvoiceError] = useState("");
@@ -2585,10 +3847,34 @@ export default function App() {
   const [invoiceAmount, setInvoiceAmount] = useState("");
   const [invoiceCurrency, setInvoiceCurrency] = useState("RON");
   const [invoiceStatus, setInvoiceStatus] = useState("unpaid");
+  const [isOnline, setIsOnline] = useState(true);
+  const [reportVisible, setReportVisible] = useState(false);
+  const [reportFields, setReportFields] = useState(REPORT_FIELDS);
+  const [reportBusy, setReportBusy] = useState(false);
+  const [actionInvoice, setActionInvoice] = useState(null);
+  const [reminderInput, setReminderInput] = useState("");
+  const [forwardingAddress, setForwardingAddress] = useState("");
+  const [sourceHubVisible, setSourceHubVisible] = useState(false);
+  const [privacyVisible, setPrivacyVisible] = useState(false);
+  const [sensitivePreviewsHidden, setSensitivePreviewsHidden] = useState(true);
+  const [phone, setPhone] = useState("");
+  const [phoneCode, setPhoneCode] = useState("");
+  const [phoneVerified, setPhoneVerified] = useState(false);
+  const [phoneInboxNumber, setPhoneInboxNumber] = useState("");
+  const [phoneStatus, setPhoneStatus] = useState("");
+  const [phoneBusy, setPhoneBusy] = useState(false);
+  const [phoneSyncing, setPhoneSyncing] = useState(false);
+  const cacheStateRef = useRef({
+    invoices: [],
+    mailAccounts: {},
+    companyName: "",
+    phone: "",
+    phoneVerified: false,
+    phoneInboxNumber: "",
+  });
 
   const loadingTimeoutRef = useRef(null);
-  const copyTimeoutRef = useRef(null);
-  const forceLoginRef = useRef(true);
+  const authUidRef = useRef(null);
   const splashOpacity = useRef(new Animated.Value(1)).current;
   const splashScale = useRef(new Animated.Value(0.98)).current;
   const statusPulse = useRef(new Animated.Value(0)).current;
@@ -2603,21 +3889,93 @@ export default function App() {
 
   const emailVerified = !!user?.emailVerified;
   const dict = translations[lang] || translations.en;
-  const t = (key) => dict[key] || translations.en[key] || key;
-  const accountLabel = companyName || displayName || user?.email || t("user_fallback");
+  const t = useCallback(
+    (key) => dict[key] || translations.en[key] || key,
+    [dict]
+  );
+  const accountLabel = plan === "business"
+    ? companyName || displayName || user?.email || t("user_fallback")
+    : displayName || user?.email || t("user_fallback");
   const locale = LOCALE_MAP[lang] || "en-US";
-  const mailSyncStatusText =
-    mailSyncStatus === "error"
-      ? t("sync_panel_error")
-      : mailSyncStatus === "pending"
-        ? t("sync_panel_pending")
-        : mailSyncAddress
-          ? t("sync_panel_ready")
-          : t("sync_panel_empty");
-  const mailSyncCopyLabel = mailSyncCopied
-    ? t("sync_panel_copied")
-    : t("sync_panel_copy");
-  const mailSyncCanCopy = !!mailSyncAddress && mailSyncStatus !== "pending";
+  const planIsBusiness = plan === "business";
+  const planWorkspaceSpace = workspaceSpaceForPlan(plan);
+  const isMailProviderAllowed = useCallback(
+    (provider) => normalizeProviderName(provider) !== "outlook" || planIsBusiness,
+    [planIsBusiness]
+  );
+  const mailAccountsList = useMemo(
+    () => getMailAccountEntries(mailAccounts),
+    [mailAccounts]
+  );
+  const mailConnected = mailAccountsList.some(
+    ({ data }) => data && data.connected
+  );
+  const phoneConnected = !!(phoneVerified || phoneInboxNumber);
+  const needsInvoiceSourceSetup = !mailConnected && !phoneConnected;
+  const mailHasSyncIssue = mailAccountsList.some(({ data }) =>
+    hasMailAccountSyncIssue(data)
+  );
+  const mailLatestSync = mailAccountsList
+    .map(({ data }) => resolveDate(data.lastSyncAt))
+    .filter(Boolean)
+    .sort((a, b) => b.getTime() - a.getTime())[0];
+  const mailSyncCanSync = (mailConnected || phoneConnected) && !syncing && !phoneSyncing;
+  const mailSyncStatusText = !mailConnected
+    ? t("mail_sync_panel_empty")
+    : syncing
+      ? t("mail_sync_panel_syncing")
+      : mailHasSyncIssue
+        ? t("mail_sync_panel_error")
+      : mailSyncNotice
+        ? mailSyncNotice
+        : mailLatestSync
+          ? t("mail_sync_panel_last_sync").replace(
+              "{{time}}",
+              mailLatestSync.toLocaleString(locale)
+            )
+          : t("mail_sync_panel_ready");
+  const workspaceInvoices = useMemo(
+    () => invoices.map((invoice) => ({ ...invoice, spaceId: planWorkspaceSpace })),
+    [invoices, planWorkspaceSpace]
+  );
+  const intelligencePulse = useMemo(
+    () => Intelligence.computePulse(workspaceInvoices),
+    [workspaceInvoices]
+  );
+  const selectedIntelligence = useMemo(
+    () => actionInvoice ? Intelligence.enrichInvoice(actionInvoice, invoices) : null,
+    [actionInvoice, invoices]
+  );
+  useEffect(() => {
+    cacheStateRef.current = {
+      invoices,
+      mailAccounts,
+      companyName,
+      phone,
+      phoneVerified,
+      phoneInboxNumber,
+    };
+  }, [companyName, invoices, mailAccounts, phone, phoneInboxNumber, phoneVerified]);
+
+  useEffect(() => {
+    let active = true;
+    void AsyncStorage.multiGet([MOBILE_LANGUAGE_KEY, MOBILE_PLAN_KEY, MOBILE_PRIVACY_KEY]).then((entries) => {
+      if (!active) return;
+      const values = Object.fromEntries(entries || []);
+      if (values[MOBILE_LANGUAGE_KEY] && translations[values[MOBILE_LANGUAGE_KEY]]) {
+        setLang(values[MOBILE_LANGUAGE_KEY]);
+      }
+
+      if (values[MOBILE_PRIVACY_KEY] === "false") setSensitivePreviewsHidden(false);
+    });
+    return () => { active = false; };
+  }, []);
+
+
+
+  const mailConnectProviderLabel = mailConnectBusy
+    ? t("mail_sync_connect_provider_detecting")
+    : providerDisplayName(mailConnectProvider, t);
   const languageLabel =
     LANG_OPTIONS.find((item) => item.code === lang)?.label || t("settings_language");
   const pulseScale = statusPulse.interpolate({
@@ -2633,30 +3991,89 @@ export default function App() {
     const now = new Date();
     const month = now.getMonth();
     const year = now.getFullYear();
-    let total = 0;
+    const totals = {};
     let unpaid = 0;
     let overdue = 0;
-    let currency = "RON";
 
     invoices.forEach((inv) => {
-      if (inv.currency) currency = inv.currency;
+      if (!isMeaningfulInvoiceData(inv)) return;
+      if (!invoiceLooksLikeSubscription(inv)) return;
       if (inv.issueDate) {
         const d = inv.issueDate;
         if (d.getMonth() === month && d.getFullYear() === year) {
-          total += Number(inv.amount) || 0;
+          const currency = inv.currency || "RON";
+          totals[currency] = (totals[currency] || 0) + (Number(inv.amount) || 0);
         }
       }
-      if (inv.status === "unpaid") unpaid += 1;
-      if (inv.status === "overdue") overdue += 1;
+      const effectiveStatus = getInvoiceEffectiveStatus(inv);
+      if (effectiveStatus === "unpaid") unpaid += 1;
+      if (effectiveStatus === "overdue") overdue += 1;
     });
 
     return {
-      total,
+      totals: Object.keys(totals).length ? totals : { RON: 0 },
       unpaid,
       overdue,
-      currency,
     };
   }, [invoices]);
+
+  const syncCloud = useCallback(async (authUser) => {
+    try {
+      await listAll(ref(storage, `users/${authUser.uid}`));
+      return;
+    } catch (_) {
+      // fall back to legacy bucket if needed
+    }
+    try {
+      await listAll(ref(legacyStorage, `users/${authUser.uid}`));
+    } catch (_) {
+      // ignore storage sync failures
+    }
+  }, []);
+
+  const loadProfile = useCallback(
+    async (authUser) => {
+      let claimedPlan = "";
+      try {
+        const tokenResult = await authUser.getIdTokenResult();
+        if (tokenResult?.claims?.plan) {
+          claimedPlan = normalizeAccountPlan(tokenResult.claims.plan);
+        }
+      } catch (_) {
+        // ignore claims errors
+      }
+      let profilePlan = "";
+      try {
+        const profileSnapshot = await getDoc(doc(firestore, "users", authUser.uid));
+        profilePlan = profileSnapshot.exists()
+          ? normalizeAccountPlan(profileSnapshot.data()?.plan)
+          : "";
+      } catch (_) {
+        // The cached plan remains available when Firestore is temporarily unavailable.
+      }
+      const cachedPlan = await AsyncStorage.getItem(`${MOBILE_PLAN_KEY}_${authUser.uid}`).catch(() => null);
+      const planValue = claimedPlan || profilePlan || normalizeAccountPlan(cachedPlan);
+      if (auth.currentUser?.uid !== authUser.uid) return;
+      setPlan(planValue);
+      await AsyncStorage.setItem(`${MOBILE_PLAN_KEY}_${authUser.uid}`, planValue).catch(() => {});
+      try {
+        await setDoc(
+          doc(firestore, "users", authUser.uid),
+          {
+            email: authUser.email || "",
+            displayName: authUser.displayName || "",
+            updatedAt: serverTimestamp(),
+            lastSeenAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      } catch (_) {
+        // ignore profile sync failures
+      }
+      void syncCloud(authUser);
+    },
+    [syncCloud]
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -2665,28 +4082,19 @@ export default function App() {
       setAuthReady(true);
       setLoading(false);
       clearLoadingTimeout();
-      if (forceLoginRef.current) {
-        forceLoginRef.current = false;
-        setError("");
-        if (authUser) {
-          signOut(auth).catch(() => {});
-        }
-        setUser(null);
-        setDisplayName("");
-        setCompanyName("");
-        setPlan("basic");
+      if (authUidRef.current !== (authUser?.uid || null)) {
+        authUidRef.current = authUser?.uid || null;
         setInvoices([]);
         setInvoicesReady(false);
+        setMailAccounts({});
+        setPlan("basic");
+        setCompanyName("");
+        setPhone("");
+        setPhoneVerified(false);
+        setPhoneInboxNumber("");
         setProfileFirst("");
         setProfileLast("");
         setProfileCompany("");
-        setProfileMessage("");
-        setMailSyncAddress("");
-        setMailSyncStatus("idle");
-        setMailSyncCopied(false);
-        setSyncMessage("");
-        setThemeMode("dark");
-        return;
       }
       setError("");
       setUser(authUser || null);
@@ -2703,9 +4111,8 @@ export default function App() {
         setProfileLast("");
         setProfileCompany("");
         setProfileMessage("");
-        setMailSyncAddress("");
-        setMailSyncStatus("idle");
-        setMailSyncCopied(false);
+        setMailAccounts({});
+        setMailSyncNotice("");
         setSyncMessage("");
         setThemeMode("dark");
       }
@@ -2714,10 +4121,10 @@ export default function App() {
       mounted = false;
       unsubscribe();
     };
-  }, []);
+  }, [isOnline, loadProfile, t]);
 
   useEffect(() => {
-    const splashTimer = setTimeout(() => {
+    const splashTimer = globalThis.setTimeout(() => {
       Animated.parallel([
         Animated.timing(splashOpacity, {
           toValue: 0,
@@ -2733,7 +4140,7 @@ export default function App() {
         }),
       ]).start(() => setSplashDone(true));
     }, SPLASH_DURATION_MS);
-    return () => clearTimeout(splashTimer);
+    return () => globalThis.clearTimeout(splashTimer);
   }, [splashOpacity, splashScale]);
 
   useEffect(() => {
@@ -2758,29 +4165,43 @@ export default function App() {
   }, [statusPulse]);
 
   useEffect(() => {
-    return () => {
-      if (copyTimeoutRef.current) {
-        clearTimeout(copyTimeoutRef.current);
-        copyTimeoutRef.current = null;
-      }
-    };
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      setIsOnline(state.isConnected !== false && state.isInternetReachable !== false);
+    });
+    NetInfo.fetch().then((state) => {
+      setIsOnline(state.isConnected !== false && state.isInternetReachable !== false);
+    });
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
     if (!user?.uid) return undefined;
+    let active = true;
+    let receivedProfile = false;
+    void loadOfflineCache(user.uid).then((cache) => {
+      if (!active || receivedProfile || auth.currentUser?.uid !== user.uid || !cache?.profile) return;
+      setCompanyName(cache.profile.companyName || "");
+      setPhone(cache.profile.phone || "");
+      setPhoneVerified(!!cache.profile.phoneVerified);
+      setPhoneInboxNumber(cache.profile.phoneInboxNumber || "");
+    });
     const userRef = doc(firestore, "users", user.uid);
     const unsubscribe = onSnapshot(
       userRef,
       { includeMetadataChanges: true },
       (snapshot) => {
+        if (!active || auth.currentUser?.uid !== user.uid) return;
         if (!snapshot.exists()) return;
+        receivedProfile = true;
         const data = snapshot.data() || {};
         if (data.displayName) setDisplayName(data.displayName);
         if (data.company || data.companyName) {
           setCompanyName(data.company || data.companyName);
         }
         if (data.plan) {
-          setPlan(String(data.plan || "basic").toLowerCase());
+          const nextPlan = normalizeAccountPlan(data.plan);
+          setPlan(nextPlan);
+          void AsyncStorage.setItem(`${MOBILE_PLAN_KEY}_${user.uid}`, nextPlan).catch(() => {});
         }
         if (data.lang) {
           setLang((prev) => (data.lang && data.lang !== prev ? data.lang : prev));
@@ -2790,18 +4211,6 @@ export default function App() {
             data.themeMode && data.themeMode !== prev ? data.themeMode : prev
           );
         }
-        const nextMailSyncAddress =
-          data.mailSyncAddress || data.mail_sync_address || "";
-        setMailSyncAddress(nextMailSyncAddress);
-        setMailSyncCopied(false);
-        if (nextMailSyncAddress) {
-          setSyncMessage("");
-        }
-        setMailSyncStatus((prev) => {
-          if (nextMailSyncAddress) return "ready";
-          if (prev === "pending" || prev === "error") return prev;
-          return "idle";
-        });
         if (data.firstName || data.lastName) {
           setProfileFirst(data.firstName || "");
           setProfileLast(data.lastName || "");
@@ -2809,9 +4218,58 @@ export default function App() {
         if (data.company || data.companyName) {
           setProfileCompany(data.company || data.companyName);
         }
+        setPhone(normalizePhoneInput(data.phone || data.phoneNumber || ""));
+        setPhoneVerified(!!data.phoneVerified);
+        setPhoneInboxNumber(normalizePhoneInput(data.phoneInboxNumber || data.phone_inbox_number || ""));
+        const cached = cacheStateRef.current;
+        void saveOfflineCache(user.uid, {
+          profile: {
+            companyName: data.company || data.companyName || "",
+            phone: normalizePhoneInput(data.phone || data.phoneNumber || ""),
+            phoneVerified: !!data.phoneVerified,
+            phoneInboxNumber: normalizePhoneInput(data.phoneInboxNumber || data.phone_inbox_number || ""),
+          },
+          invoices: cached.invoices,
+          mailAccounts: cached.mailAccounts,
+        });
       },
       () => {
         // ignore listener errors
+      }
+    );
+    return () => { active = false; unsubscribe(); };
+  }, [user?.uid]);
+
+  useEffect(() => {
+    if (!user?.uid) return undefined;
+    const ref = collection(firestore, "users", user.uid, "mail_accounts");
+    const unsubscribe = onSnapshot(
+      ref,
+      (snapshot) => {
+        const next = {};
+        snapshot.forEach((docSnap) => {
+          next[docSnap.id] = {
+            accountId: docSnap.id,
+            ...(docSnap.data() || {}),
+          };
+        });
+        setMailAccounts(next);
+        const cached = cacheStateRef.current;
+        void saveOfflineCache(user.uid, {
+          invoices: cached.invoices,
+          mailAccounts: next,
+          profile: {
+            companyName: cached.companyName,
+            phone: cached.phone,
+            phoneVerified: cached.phoneVerified,
+            phoneInboxNumber: cached.phoneInboxNumber,
+          },
+        });
+      },
+      () => {
+        void loadOfflineCache(user.uid).then((cache) => {
+          if (auth.currentUser?.uid === user.uid && cache?.mailAccounts) setMailAccounts(cache.mailAccounts);
+        });
       }
     );
     return () => unsubscribe();
@@ -2819,76 +4277,81 @@ export default function App() {
 
   useEffect(() => {
     if (!user?.uid) return undefined;
-    setInvoicesReady(false);
+    let active = true;
+    let receivedSnapshot = false;
+    void loadOfflineCache(user.uid).then((cache) => {
+      if (!active || receivedSnapshot || auth.currentUser?.uid !== user.uid) return;
+      if (Array.isArray(cache?.invoices)) {
+        setInvoices(cache.invoices);
+        setInvoicesReady(true);
+      }
+    });
     const invRef = collection(firestore, "users", user.uid, "invoices");
-    const invQuery = query(invRef, limit(50));
+    const invQuery = query(invRef);
     const unsubscribe = onSnapshot(
       invQuery,
       (snapshot) => {
-        const next = snapshot.docs.map(normalizeInvoiceDoc);
+        if (!active || auth.currentUser?.uid !== user.uid) return;
+        receivedSnapshot = true;
+        const next = snapshot.docs
+          .map(normalizeInvoiceDoc)
+          .filter(invoiceLooksLikeSubscription)
+          .filter(isMeaningfulInvoiceData);
         next.sort((a, b) => {
-          const aTime = a.issueDate ? a.issueDate.getTime() : 0;
-          const bTime = b.issueDate ? b.issueDate.getTime() : 0;
+          const aDate = a.issueDate || a.dueDate || null;
+          const bDate = b.issueDate || b.dueDate || null;
+          const aTime = aDate ? aDate.getTime() : 0;
+          const bTime = bDate ? bDate.getTime() : 0;
           return bTime - aTime;
         });
         setInvoices(next);
         setInvoicesReady(true);
+        const cached = cacheStateRef.current;
+        void saveOfflineCache(user.uid, {
+          invoices: next,
+          mailAccounts: cached.mailAccounts,
+          profile: {
+            companyName: cached.companyName,
+            phone: cached.phone,
+            phoneVerified: cached.phoneVerified,
+            phoneInboxNumber: cached.phoneInboxNumber,
+          },
+        });
       },
-      () => setInvoicesReady(true)
+      () => {
+        void loadOfflineCache(user.uid).then((cache) => {
+          if (!active || auth.currentUser?.uid !== user.uid) return;
+          if (Array.isArray(cache?.invoices)) setInvoices(cache.invoices);
+          setInvoicesReady(true);
+        });
+      }
     );
-    return () => unsubscribe();
+    return () => { active = false; unsubscribe(); };
   }, [user?.uid]);
+
+  const syncActiveRef = useRef({ uid: user?.uid, online: isOnline });
+  syncActiveRef.current = { uid: user?.uid, online: isOnline };
+  const drainOfflineQueue = useCallback(async (uid) => {
+    const active = () => syncActiveRef.current.uid === uid && syncActiveRef.current.online;
+    let remaining;
+    do { remaining = await offlineQueueEngine.flush(uid, active); } while (remaining && active());
+    return remaining;
+  }, []);
+  useEffect(() => {
+    if (!user?.uid || !isOnline) return;
+    const uid = user.uid;
+    void drainOfflineQueue(uid)
+      .then((remaining) => { if (!remaining && syncActiveRef.current.uid === uid) setSyncMessage(t("offline_synced")); })
+      .catch(() => { if (syncActiveRef.current.uid === uid) setSyncMessage(t("offline_notice")); });
+  }, [drainOfflineQueue, isOnline, t, user?.uid]);
 
   const showSplash = !authReady || !splashDone;
   const showLogin = !user;
 
   function clearLoadingTimeout() {
     if (loadingTimeoutRef.current) {
-      clearTimeout(loadingTimeoutRef.current);
+      globalThis.clearTimeout(loadingTimeoutRef.current);
       loadingTimeoutRef.current = null;
-    }
-  }
-
-  async function loadProfile(authUser) {
-    let planValue = "basic";
-    try {
-      const tokenResult = await authUser.getIdTokenResult();
-      if (tokenResult?.claims?.plan) {
-        planValue = String(tokenResult.claims.plan).toLowerCase();
-      }
-    } catch (_) {
-      // ignore claims errors
-    }
-    setPlan(planValue);
-    try {
-      await setDoc(
-        doc(firestore, "users", authUser.uid),
-        {
-          email: authUser.email || "",
-          displayName: authUser.displayName || "",
-          plan: planValue,
-          updatedAt: serverTimestamp(),
-          lastSeenAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-    } catch (_) {
-      // ignore profile sync failures
-    }
-    void syncCloud(authUser);
-  }
-
-  async function syncCloud(authUser) {
-    try {
-      await listAll(ref(storage, `users/${authUser.uid}`));
-      return;
-    } catch (_) {
-      // fall back to legacy bucket if needed
-    }
-    try {
-      await listAll(ref(legacyStorage, `users/${authUser.uid}`));
-    } catch (_) {
-      // ignore storage sync failures
     }
   }
 
@@ -2965,20 +4428,48 @@ export default function App() {
     }
     const issueDate = parseDateInput(invoiceIssueDate);
     const dueDate = parseDateInput(invoiceDueDate);
+    const invoicePayload = {
+      company: invoiceCompany.trim(),
+      category: invoiceCategory.trim() || null,
+      number: invoiceNumber.trim() || null,
+      issueDate: issueDate || null,
+      dueDate: dueDate || null,
+      amount: amountValue,
+      currency: invoiceCurrency.trim() || "RON",
+      status: invoiceStatus,
+      recurring: true,
+      invoiceType: "subscription",
+      source: "manual",
+      spaceId: planWorkspaceSpace,
+    };
+    if (!isOnline) {
+      const localId = `local_${OfflineQueue.newId()}`;
+      const localInvoice = {
+        id: localId,
+        ...invoicePayload,
+        createdAt: new Date(),
+      };
+      const nextInvoices = [localInvoice, ...invoices];
+      setInvoices(nextInvoices);
+      await offlineQueueEngine.edit(user.uid, (queue) => [
+        ...queue,
+        { type: "addInvoice", localId, data: serializeForCache(invoicePayload) },
+      ]);
+      await saveOfflineCache(user.uid, {
+        invoices: nextInvoices,
+        mailAccounts,
+        profile: { companyName, phone, phoneVerified, phoneInboxNumber },
+      });
+      setInvoiceMessage(t("offline_saved"));
+      closeInvoiceModal();
+      return;
+    }
     try {
       setSavingInvoice(true);
-      const categoryValue = invoiceCategory.trim();
-      const numberValue = invoiceNumber.trim();
       await addDoc(collection(firestore, "users", user.uid, "invoices"), {
-        company: invoiceCompany.trim(),
-        category: categoryValue || null,
-        number: numberValue || null,
-        issueDate: issueDate || null,
-        dueDate: dueDate || null,
-        amount: amountValue,
-        currency: invoiceCurrency.trim() || "RON",
-        status: invoiceStatus,
+        ...invoicePayload,
         createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
       });
       setInvoiceMessage(t("invoice_save_success"));
       closeInvoiceModal();
@@ -2989,38 +4480,594 @@ export default function App() {
     }
   }
 
-  async function handleSyncMail() {
+  async function deleteInvoiceById(invoiceId) {
+    if (!user?.uid || !invoiceId) return false;
+    const queued = await getOfflineQueue(user.uid);
+    if (auth.currentUser?.uid !== user.uid) return false;
+    if (!isOnline || queued.some(item => (item.id || item.localId) === invoiceId)) {
+      const nextInvoices = invoices.filter((invoice) => invoice.id !== invoiceId);
+      setInvoices(nextInvoices);
+      await offlineQueueEngine.edit(user.uid, (queue) => {
+        const pending = queue.some((item) => !item.dispatched && item.type === "addInvoice" && item.localId === invoiceId);
+        const remaining = queue.filter((item) => !(!item.dispatched && item.type === "addInvoice" && item.localId === invoiceId));
+        if (!pending) remaining.push({ type: "deleteInvoice", id: invoiceId });
+        return remaining;
+      });
+      if (isOnline) void drainOfflineQueue(user.uid).catch(() => setSyncMessage(t("offline_notice")));
+      await saveOfflineCache(user.uid, {
+        invoices: nextInvoices,
+        mailAccounts,
+        profile: { companyName, phone, phoneVerified, phoneInboxNumber },
+      });
+      setSyncMessage(t("offline_saved"));
+      return true;
+    }
+    try {
+      await deleteDoc(doc(firestore, "users", user.uid, "invoices", invoiceId));
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function handleDeleteInvoice(invoice) {
+    if (!invoice?.id) return;
+    Alert.alert(t("table_actions_delete"), t("invoice_delete_confirm"), [
+      { text: t("invoice_cancel"), style: "cancel" },
+      {
+        text: t("table_actions_delete"),
+        style: "destructive",
+        onPress: () => {
+          void (async () => {
+            const ok = await deleteInvoiceById(invoice.id);
+            if (!ok) setSyncMessage(t("invoice_delete_error"));
+          })();
+        },
+      },
+    ]);
+  }
+
+  async function patchInvoiceFromAction(invoice, patch) {
+    if (!user?.uid || !invoice?.id) return false;
+    const queued = await getOfflineQueue(user.uid);
+    if (auth.currentUser?.uid !== user.uid) return false;
+    if (!isOnline || queued.some(item => (item.id || item.localId) === invoice.id)) {
+      const next = invoices.map((item) => item.id === invoice.id ? { ...item, ...patch } : item);
+      setInvoices(next);
+      await offlineQueueEngine.edit(user.uid, (queue) => {
+        const pending = queue.find((item) => !item.dispatched && item.type === "addInvoice" && item.localId === invoice.id);
+        if (pending) pending.data = { ...pending.data, ...serializeForCache(patch) };
+        else queue.push({ type: "updateInvoice", id: invoice.id, data: serializeForCache(patch), baseUpdatedAt: serializeForCache(invoice.updatedAt) });
+        return queue;
+      });
+      await saveOfflineCache(user.uid, { invoices: next, mailAccounts, profile: { companyName, phone, phoneVerified, phoneInboxNumber } });
+      if (isOnline) void drainOfflineQueue(user.uid).catch(() => setSyncMessage(t("offline_notice")));
+      return true;
+    }
+    await updateDoc(doc(firestore, "users", user.uid, "invoices", invoice.id), { ...patch, updatedAt: serverTimestamp() });
+    return true;
+  }
+
+  async function handleActionPaid() {
+    if (!actionInvoice) return;
+    await patchInvoiceFromAction(actionInvoice, {
+      status: "paid",
+      paymentSource: "manual_confirmation",
+      paidAt: new Date().toISOString(),
+    });
+    setSyncMessage(t("action_paid_success"));
+    setActionInvoice(null);
+  }
+
+  function handleOfficialAction(kind) {
+    if (!actionInvoice) return;
+    const actions = Intelligence.officialActions(actionInvoice);
+    const url = kind === "cancel" ? actions.cancellationUrl : actions.paymentUrl;
+    if (!url) {
+      setSyncMessage(t("action_unavailable"));
+      return;
+    }
+    openExternal(url);
+  }
+
+  async function handleSaveReminder() {
+    if (!actionInvoice || !user?.uid || !isOnline) return;
+    const normalized = String(reminderInput || "").trim().replace(" ", "T");
+    const remindAt = new Date(normalized);
+    if (Number.isNaN(remindAt.getTime()) || remindAt.getTime() <= Date.now()) {
+      setSyncMessage(t("reminder_placeholder"));
+      return;
+    }
+    await addDoc(collection(firestore, "users", user.uid, "reminders"), {
+      invoiceId: actionInvoice.id,
+      company: actionInvoice.company || "",
+      amount: Number(actionInvoice.amount) || 0,
+      currency: actionInvoice.currency || "RON",
+      remindAt,
+      status: "scheduled",
+      createdAt: serverTimestamp(),
+    });
+    await patchInvoiceFromAction(actionInvoice, { reminderAt: remindAt });
+    setSyncMessage(t("reminder_saved"));
+    setReminderInput("");
+    setActionInvoice(null);
+  }
+
+  async function openSourceHub() {
+    setSourceHubVisible(true);
+    if (forwardingAddress || !isOnline || !user?.uid) return;
+    try {
+      const result = await httpsCallable(functions, "getMailSyncInfo")({});
+      setForwardingAddress(String(result?.data?.address || ""));
+    } catch (_) {
+      setForwardingAddress("");
+    }
+  }
+
+  function openSourceHubFromSettings() {
+    closeSettings();
+    void openSourceHub();
+  }
+
+  function openPrivacyFromSettings() {
+    closeSettings();
+    setPrivacyVisible(true);
+  }
+
+  async function shareForwardingAddress() {
+    if (!forwardingAddress) return;
+    await Share.share({ message: forwardingAddress }).catch(() => {});
+    setSyncMessage(t("forwarding_ready"));
+  }
+
+  async function handleSyncNow() {
     if (!user) return;
+    if (!mailConnected && !phoneConnected) {
+      setMailSyncNotice(t("mail_sync_panel_empty"));
+      return;
+    }
     setSyncMessage("");
-    setMailSyncStatus("pending");
+    setMailSyncNotice("");
     try {
       setSyncing(true);
-      await addDoc(collection(firestore, "users", user.uid, "sync_requests"), {
-        type: "mail",
-        status: "requested",
-        createdAt: serverTimestamp(),
-      });
-    } catch (_) {
-      setMailSyncStatus("error");
-      setSyncMessage(t("invoices_sync_failed"));
+      if (mailConnected) await requestMailSyncNow();
+      if (phoneConnected) await httpsCallable(functions, "syncPhoneInboxNow")({ force: true });
+    } catch (err) {
+      const rawCode = String(err?.code || "");
+      const code = rawCode.includes("/") ? rawCode.split("/").pop() : rawCode;
+      if (code === "unauthenticated" || code === "401") {
+        setSyncMessage(t("mail_sync_error_auth"));
+      } else {
+        setSyncMessage(t("mail_sync_panel_error"));
+      }
     } finally {
       setSyncing(false);
     }
   }
 
-  async function handleCopyMailSync() {
-    if (!mailSyncCanCopy) return;
+  async function handleSavePhone() {
+    if (!user?.uid) return;
+    const normalized = normalizePhoneInput(phone);
+    if (!isValidPhone(normalized)) {
+      setPhoneStatus(t("phone_empty"));
+      return;
+    }
+    if (!isOnline) {
+      setPhoneStatus(t("offline_notice"));
+      return;
+    }
     try {
-      await Clipboard.setStringAsync(mailSyncAddress);
-      setMailSyncCopied(true);
-      if (copyTimeoutRef.current) {
-        clearTimeout(copyTimeoutRef.current);
-      }
-      copyTimeoutRef.current = setTimeout(() => {
-        setMailSyncCopied(false);
-      }, 2000);
+      setPhoneBusy(true);
+      await setDoc(
+        doc(firestore, "users", user.uid),
+        {
+          phone: normalized,
+          phoneVerified: false,
+          phoneUpdatedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      setPhone(normalized);
+      setPhoneVerified(false);
+      setPhoneStatus(t("phone_pending"));
     } catch (_) {
-      // ignore copy failures
+      setPhoneStatus(t("phone_sms_error"));
+    } finally {
+      setPhoneBusy(false);
+    }
+  }
+
+  async function handleRequestPhoneCode() {
+    const normalized = normalizePhoneInput(phone);
+    if (!isValidPhone(normalized)) {
+      setPhoneStatus(t("phone_empty"));
+      return;
+    }
+    if (!isOnline) {
+      setPhoneStatus(t("offline_notice"));
+      return;
+    }
+    try {
+      setPhoneBusy(true);
+      await httpsCallable(functions, "requestPhoneVerificationCode")({
+        phone: normalized,
+      });
+      setPhone(normalized);
+      setPhoneVerified(false);
+      setPhoneStatus(t("phone_sms_sent"));
+    } catch (_) {
+      setPhoneStatus(t("phone_sms_error"));
+    } finally {
+      setPhoneBusy(false);
+    }
+  }
+
+  async function handleVerifyPhoneCode() {
+    const normalized = normalizePhoneInput(phone);
+    const code = String(phoneCode || "").replace(/\D/g, "").slice(0, 6);
+    if (!isValidPhone(normalized) || code.length !== 6) {
+      setPhoneStatus(t("phone_pending"));
+      return;
+    }
+    if (!isOnline) {
+      setPhoneStatus(t("offline_notice"));
+      return;
+    }
+    try {
+      setPhoneBusy(true);
+      const result = await httpsCallable(functions, "verifyPhoneVerificationCode")({
+        phone: normalized,
+        code,
+      });
+      const data = result?.data || {};
+      setPhone(normalizePhoneInput(data.phone || normalized));
+      setPhoneVerified(true);
+      if (data.inboxNumber) setPhoneInboxNumber(normalizePhoneInput(data.inboxNumber));
+      setPhoneCode("");
+      setPhoneStatus(t("phone_verified"));
+    } catch (_) {
+      setPhoneStatus(t("phone_sms_error"));
+    } finally {
+      setPhoneBusy(false);
+    }
+  }
+
+  async function handleSyncPhoneInbox() {
+    if (!user?.uid || !phoneConnected) return;
+    if (!isOnline) {
+      setPhoneStatus(t("offline_notice"));
+      return;
+    }
+    try {
+      setPhoneSyncing(true);
+      await httpsCallable(functions, "syncPhoneInboxNow")({ force: true });
+      setPhoneStatus(t("invoices_sync_requested"));
+    } catch (_) {
+      setPhoneStatus(t("invoices_sync_failed"));
+    } finally {
+      setPhoneSyncing(false);
+    }
+  }
+
+  async function handleExportReport(format) {
+    if (reportBusy) return;
+    setReportBusy(true);
+    try {
+    const fields = reportFields.length ? reportFields : REPORT_FIELDS;
+    const rows = buildReportRows(workspaceInvoices, fields, locale, t);
+    if (!rows.length) {
+      setSyncMessage(t("reports_empty"));
+      return;
+    }
+    const fileBase = `${FileSystem.cacheDirectory}dueflux-report-${Date.now()}`;
+    let uri = `${fileBase}.${format}`;
+    let content = "";
+    if ((format === "pdf" || format === "html") && isOnline && rows.length <= 1000) {
+      try {
+        const response = await httpsCallable(functions, "createReport")({ report: {
+          title: t("reports_title"), language: lang, format,
+          columns: fields.map((field) => ({ key: field, label: reportFieldLabel(field, t) })),
+          rows: rows.map((row) => fields.map((field) => String(row[reportFieldLabel(field, t)] ?? ""))),
+        } });
+        await FileSystem.writeAsStringAsync(uri, response.data.base64, { encoding: FileSystem.EncodingType.Base64 });
+        if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri, { mimeType: response.data.mimeType });
+        setSyncMessage(t("reports_exported"));
+        return;
+      } catch (error) {
+        if (!["functions/failed-precondition", "functions/not-found", "functions/unavailable"].includes(error.code)) throw error;
+      }
+    }
+    const reportHeaders = fields.map((field) => `<th>${escapeReportText(reportFieldLabel(field, t))}</th>`).join("");
+    const reportBody = rows
+      .map((row) => `<tr>${fields.map((field) => `<td>${escapeReportText(row[reportFieldLabel(field, t)])}</td>`).join("")}</tr>`)
+      .join("");
+    const reportHtml = `<!doctype html><html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;padding:24px;color:#10264a}table{width:100%;border-collapse:collapse}th,td{padding:8px;border:1px solid #dbe5f3;text-align:left}th{background:#eff6ff}</style></head><body><h1>DueFlux Report</h1><table><thead><tr>${reportHeaders}</tr></thead><tbody>${reportBody}</tbody></table></body></html>`;
+    if (format === "pdf") {
+      const result = await Print.printToFileAsync({ html: reportHtml });
+      if (result?.uri && await Sharing.isAvailableAsync()) await Sharing.shareAsync(result.uri, { mimeType: "application/pdf" });
+      setSyncMessage(t("reports_exported"));
+      return;
+    }
+    if (format === "json") {
+      content = JSON.stringify(rows, null, 2);
+    } else if (format === "html") {
+      content = reportHtml;
+    } else if (format === "txt") {
+      content = rows.map((row) => Object.entries(row).map(([key, value]) => `${key}: ${value}`).join(" | ")).join("\n");
+    } else {
+      uri = `${fileBase}.csv`;
+      const headers = fields.map((field) => reportFieldLabel(field, t));
+      const csvEscape = (value) => {
+        const raw = String(value ?? "");
+        const safe = /^[\s\uFEFF]*[=+@-]/.test(raw) ? "'" + raw : raw;
+        return `"${safe.replace(/"/g, '""')}"`;
+      };
+      content = [
+        headers.map(csvEscape).join(","),
+        ...rows.map((row) => headers.map((header) => csvEscape(row[header])).join(",")),
+      ].join("\n");
+    }
+    await FileSystem.writeAsStringAsync(uri, content, {
+      encoding: FileSystem.EncodingType.UTF8,
+    });
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(uri);
+    }
+    setSyncMessage(t("reports_exported"));
+    } catch (_) {
+      setSyncMessage(t("reports_failed"));
+    } finally { setReportBusy(false); }
+  }
+
+  const isValidEmailValue = (value) =>
+    /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(value || "").trim());
+
+  const guessProvider = (value) => {
+    const email = String(value || "").trim().toLowerCase();
+    const domain = email.includes("@") ? email.split("@").pop() : "";
+    if (!domain) return "unknown";
+    if (domain.endsWith("gmail.com") || domain.endsWith("googlemail.com")) {
+      return "gmail";
+    }
+    if (
+      domain.endsWith("outlook.com") ||
+      domain.endsWith("hotmail.com") ||
+      domain.endsWith("live.com") ||
+      domain.endsWith("msn.com") ||
+      domain.endsWith("office365.com") ||
+      domain.endsWith("outlook.office.com")
+    ) {
+      return "outlook";
+    }
+    return "unknown";
+  };
+
+  async function detectProvider(email) {
+    const result = await httpsCallable(functions, "detectMailProvider")({
+      email,
+    });
+    return result?.data?.provider || "unknown";
+  }
+
+  async function requestMailOAuthLink(provider, loginHint) {
+    if (!auth.currentUser) {
+      const err = new Error("Sign in required.");
+      err.code = "unauthenticated";
+      throw err;
+    }
+    const token = await auth.currentUser.getIdToken(true);
+    const endpoint =
+      `https://us-central1-${firebaseConfig.projectId}.cloudfunctions.net/createMailOAuthLinkHttp`;
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        provider,
+        loginHint: loginHint || "",
+        idToken: token,
+      }),
+    });
+    let body = null;
+    try {
+      body = await response.json();
+    } catch (_) {
+      body = null;
+    }
+    if (!response.ok) {
+      const code = body?.error?.status
+        ? String(body.error.status)
+        : String(response.status || "");
+      const message = body?.error?.message
+        ? String(body.error.message)
+        : "Request failed";
+      const err = new Error(message);
+      err.code = code;
+      throw err;
+    }
+    return body || {};
+  }
+
+  async function requestMailDisconnect(accountId) {
+    if (!auth.currentUser) {
+      const err = new Error("Sign in required.");
+      err.code = "unauthenticated";
+      throw err;
+    }
+    const token = await auth.currentUser.getIdToken(true);
+    const endpoint =
+      `https://us-central1-${firebaseConfig.projectId}.cloudfunctions.net/disconnectMailProviderHttp`;
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        accountId,
+        deleteAccount: true,
+        idToken: token,
+      }),
+    });
+    let body = null;
+    try {
+      body = await response.json();
+    } catch (_) {
+      body = null;
+    }
+    if (!response.ok) {
+      const code = body?.error?.status
+        ? String(body.error.status)
+        : String(response.status || "");
+      const message = body?.error?.message
+        ? String(body.error.message)
+        : "Request failed";
+      const err = new Error(message);
+      err.code = code;
+      throw err;
+    }
+    return body || {};
+  }
+
+  async function requestMailSyncNow(accountId) {
+    if (!auth.currentUser) {
+      const err = new Error("Sign in required.");
+      err.code = "unauthenticated";
+      throw err;
+    }
+    const token = await auth.currentUser.getIdToken(true);
+    const endpoint =
+      `https://us-central1-${firebaseConfig.projectId}.cloudfunctions.net/syncMailNowHttp`;
+    const payload = { idToken: token };
+    if (accountId) payload.accountId = accountId;
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    let body = null;
+    try {
+      body = await response.json();
+    } catch (_) {
+      body = null;
+    }
+    if (!response.ok) {
+      const code = body?.error?.status
+        ? String(body.error.status)
+        : String(response.status || "");
+      const message = body?.error?.message
+        ? String(body.error.message)
+        : "Request failed";
+      const err = new Error(message);
+      err.code = code;
+      throw err;
+    }
+    return body || {};
+  }
+
+  function handleMailConnectEmailChange(value) {
+    setMailConnectEmail(value);
+    setMailConnectProvider(guessProvider(value));
+    if (mailConnectError) setMailConnectError("");
+  }
+
+  function openMailConnectModal() {
+    const defaultEmail = user?.email || "";
+    setMailConnectEmail(defaultEmail);
+    setMailConnectProvider(guessProvider(defaultEmail));
+    setMailConnectError("");
+    setMailConnectVisible(true);
+  }
+
+  async function handleConnectEmail() {
+    if (!user || mailConnectBusy) return;
+    const email = String(mailConnectEmail || "").trim().toLowerCase();
+    if (!isValidEmailValue(email)) {
+      setMailConnectError(t("mail_sync_connect_error_invalid"));
+      return;
+    }
+
+    setMailConnectError("");
+    setMailConnectBusy(true);
+    let provider = normalizeProviderName(guessProvider(email));
+    if (provider === "unknown") {
+      try {
+        provider = normalizeProviderName(await detectProvider(email));
+      } catch (_) {
+        provider = "unknown";
+      }
+    }
+
+    setMailConnectProvider(provider || "unknown");
+    if (!isMailProviderAllowed(provider)) {
+      setMailConnectError(t("mail_sync_connect_error_outlook_plan"));
+      setMailConnectBusy(false);
+      return;
+    }
+    if (!provider || provider === "unknown") {
+      setMailConnectBusy(false);
+      setMailConnectVisible(false);
+      await openSourceHub();
+      return;
+    }
+
+    setSyncMessage("");
+    setMailSyncNotice("");
+    try {
+      const result = await requestMailOAuthLink(provider, email);
+      const url = result?.url;
+      if (url) {
+        setMailSyncNotice(t("mail_sync_notice_browser"));
+        setMailConnectVisible(false);
+        openExternal(url);
+      } else {
+        setSyncMessage(t("mail_sync_error_config"));
+      }
+    } catch (err) {
+      const rawCode = String(err?.code || "");
+      const code = rawCode.includes("/") ? rawCode.split("/").pop() : rawCode;
+      if (code === "permission-denied") {
+        setMailSyncNotice(t("mail_sync_status_locked"));
+      } else if (code === "invalid-argument") {
+        setMailConnectError(t("mail_sync_connect_error_unsupported"));
+      } else if (code === "failed-precondition") {
+        setSyncMessage(t("mail_sync_error_config"));
+      } else if (code === "unauthenticated") {
+        setSyncMessage(t("mail_sync_error_auth"));
+        setMailConnectError(t("mail_sync_error_auth"));
+      } else if (
+        code === "network-request-failed" ||
+        code === "unavailable" ||
+        code === "deadline-exceeded"
+      ) {
+        setSyncMessage(t("offline_required"));
+        setMailConnectError(t("offline_required"));
+      } else {
+        setSyncMessage(t("mail_sync_panel_error"));
+      }
+    } finally {
+      setMailConnectBusy(false);
+    }
+  }
+
+  async function handleDisconnectProvider(accountId) {
+    if (!user) return;
+    if (!accountId) return;
+    setSyncMessage("");
+    setMailSyncNotice("");
+    try {
+      await requestMailDisconnect(accountId);
+    } catch (_) {
+      setSyncMessage(t("mail_sync_panel_error"));
     }
   }
 
@@ -3028,19 +5075,19 @@ export default function App() {
     if (!user) return;
     const firstName = profileFirst.trim();
     const lastName = profileLast.trim();
-    const company = profileCompany.trim();
     const nextDisplayName = [firstName, lastName].filter(Boolean).join(" ");
+    const profilePatch = {
+      firstName,
+      lastName,
+      displayName: nextDisplayName || displayName,
+      updatedAt: serverTimestamp(),
+    };
+    if (planIsBusiness) profilePatch.company = profileCompany.trim();
     setProfileMessage(t("profile_saving"));
     try {
       await setDoc(
         doc(firestore, "users", user.uid),
-        {
-          firstName,
-          lastName,
-          company,
-          displayName: nextDisplayName || displayName,
-          updatedAt: serverTimestamp(),
-        },
+        profilePatch,
         { merge: true }
       );
       if (auth.currentUser && nextDisplayName) {
@@ -3065,11 +5112,11 @@ export default function App() {
     try {
       setLoading(true);
       clearLoadingTimeout();
-      loadingTimeoutRef.current = setTimeout(() => {
+      loadingTimeoutRef.current = globalThis.setTimeout(() => {
         setLoading(false);
       }, 12000);
       await signInWithEmailAndPassword(auth, email.trim(), password);
-    } catch (err) {
+    } catch (_err) {
       setError(t("login_error_generic"));
       setLoading(false);
       clearLoadingTimeout();
@@ -3095,6 +5142,7 @@ export default function App() {
   async function handleLanguageSelect(nextLang) {
     setLang(nextLang);
     setLanguageVisible(false);
+    await AsyncStorage.setItem(MOBILE_LANGUAGE_KEY, nextLang).catch(() => {});
     if (!user?.uid) return;
     try {
       await setDoc(
@@ -3105,6 +5153,12 @@ export default function App() {
     } catch (_) {
       // ignore language save failures
     }
+  }
+
+  async function toggleSensitivePreviews() {
+    const next = !sensitivePreviewsHidden;
+    setSensitivePreviewsHidden(next);
+    await AsyncStorage.setItem(MOBILE_PRIVACY_KEY, next ? "true" : "false").catch(() => {});
   }
 
   async function handleThemeSelect(nextMode) {
@@ -3144,13 +5198,19 @@ export default function App() {
     return (
       <LinearGradient colors={theme.background} style={styles.app}>
         <StatusBar style={theme.statusBar} />
-        <SafeAreaView style={styles.safe}>
+        <SafeAreaView style={[styles.safe, { direction: lang === "ar" ? "rtl" : "ltr" }]}>
           <View style={styles.splashContainer}>
-            <Animated.View
-              style={{ opacity: splashOpacity, transform: [{ scale: splashScale }] }}
-            >
-              <View style={[styles.logoWrapBase, styles.logoWrapBig]}>
-                <Image source={LOGO} style={styles.logoMarkBig} />
+            <Animated.View style={{ opacity: splashOpacity, transform: [{ scale: splashScale }] }}>
+              <View style={styles.splashPanel}>
+                <View style={[styles.logoWrapBase, styles.logoWrapBig]}>
+                  <Image source={LOGO} style={styles.logoMarkBig} />
+                </View>
+                <Text style={styles.splashTitle}>{t("app_title")}</Text>
+                <Text style={styles.splashSubtitle}>{t("app_subtitle")}</Text>
+                <View style={styles.splashLoaderRow}>
+                  <View style={styles.splashLoaderBar} />
+                </View>
+                <Text style={styles.splashStatus}>{t("sync_panel_pending")}</Text>
               </View>
             </Animated.View>
           </View>
@@ -3163,7 +5223,7 @@ export default function App() {
     return (
       <LinearGradient colors={theme.background} style={styles.app}>
         <StatusBar style={theme.statusBar} />
-        <SafeAreaView style={styles.safe}>
+        <SafeAreaView style={[styles.safe, { direction: lang === "ar" ? "rtl" : "ltr" }]}>
           <KeyboardAvoidingView
             style={styles.flex}
             behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -3344,7 +5404,7 @@ export default function App() {
   return (
     <LinearGradient colors={theme.background} style={styles.app}>
       <StatusBar style={theme.statusBar} />
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={[styles.safe, { direction: lang === "ar" ? "rtl" : "ltr" }]}>
         <ScrollView contentContainerStyle={styles.appScroll}>
           <View style={[styles.appHeader, compactHeader && styles.appHeaderCompact]}>
             <LinearGradient
@@ -3467,13 +5527,91 @@ export default function App() {
             </View>
           </View>
 
+          {!isOnline ? (
+            <View style={styles.card}>
+              <View style={styles.totpRow}>
+                <View style={styles.pillOff}>
+                  <Text style={styles.pillText}>{t("offline_badge")}</Text>
+                </View>
+                <Text style={[styles.mutedText, styles.smallText]}>
+                  {t("offline_notice")}
+                </Text>
+              </View>
+            </View>
+          ) : null}
+
+          <View style={styles.card}>
+            <View style={styles.invoiceHeader}>
+              <View>
+                <Text style={styles.cardTitle}>{t("pulse_title")}</Text>
+                <Text style={[styles.mutedText, styles.smallText]}>{t("privacy_desc")}</Text>
+              </View>
+              <View style={styles.modalFooterRow}>
+                <TouchableOpacity style={styles.ghostButton} onPress={openSourceHub}>
+                  <Text style={styles.ghostButtonText}>{t("inbox_mesh")}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.ghostButton} onPress={() => setPrivacyVisible(true)}>
+                  <Text style={styles.ghostButtonText}>{t("privacy_vault")}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+            <View style={styles.chipRow}>
+              <View style={[styles.chip, styles.chipActive]}>
+                <Text style={[styles.chipText, styles.chipTextActive]}>
+                  {t(`space_${planWorkspaceSpace}`)}
+                </Text>
+              </View>
+              <Text style={[styles.mutedText, styles.smallText, { flex: 1 }]}>
+                {t(planIsBusiness ? "profile_plan_business_desc" : "profile_plan_basic_desc")}
+              </Text>
+            </View>
+            <View style={styles.kpiGrid}>
+              <View style={styles.kpiItem}>
+                <Text style={styles.kpiLabel}>{t("pulse_attention")}</Text>
+                <Text style={styles.kpiValue}>{intelligencePulse.attention.length}</Text>
+              </View>
+              <View style={styles.kpiItem}>
+                <Text style={styles.kpiLabel}>{t("pulse_due")}</Text>
+                <Text style={styles.kpiValue}>{intelligencePulse.upcoming.length}</Text>
+              </View>
+              <View style={styles.kpiItem}>
+                <Text style={styles.kpiLabel}>{t("pulse_guard")}</Text>
+                <Text style={styles.kpiValue}>{intelligencePulse.guarded}</Text>
+              </View>
+              <View style={styles.kpiItem}>
+                <Text style={styles.kpiLabel}>{t("pulse_verified")}</Text>
+                <Text style={styles.kpiValue}>{intelligencePulse.verified}</Text>
+              </View>
+            </View>
+            <Text style={[styles.sectionTitle, { marginTop: 16 }]}>{t("twin_title")}</Text>
+            {intelligencePulse.renewals.slice(0, 3).map((invoice) => (
+              <TouchableOpacity key={`renewal-${invoice.id}`} style={styles.mailProviderRow} onPress={() => setActionInvoice(invoice)}>
+                <View style={styles.mailProviderLeft}>
+                  <View style={[styles.mailProviderBadge, styles.mailProviderBadgeGeneric]}>
+                    <Text style={styles.mailProviderBadgeText}>↻</Text>
+                  </View>
+                  <View>
+                    <Text style={styles.mailProviderName}>{invoice.company || t("invoice_unknown_company")}</Text>
+                    <Text style={styles.mailProviderStatus}>
+                      {invoice.intelligence.recurrence.nextExpectedAt?.toLocaleDateString(locale)} · {t("cadence_" + invoice.intelligence.recurrence.cadence)}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={styles.ghostButtonText}>›</Text>
+              </TouchableOpacity>
+            ))}
+            {!intelligencePulse.renewals.length ? (
+              <Text style={[styles.mutedText, styles.smallText]}>{t("timeline_empty")}</Text>
+            ) : null}
+          </View>
+
           <View style={styles.card}>
             <Text style={styles.cardTitle}>{t("overview_title")}</Text>
             <View style={styles.kpiGrid}>
               <View style={styles.kpiItem}>
                 <Text style={styles.kpiLabel}>{t("overview_total")}</Text>
                 <Text style={styles.kpiValue}>
-                  {formatAmount(kpis.total, kpis.currency)}
+                  {Object.entries(kpis.totals).map(([currency, amount]) => formatAmount(amount, currency)).join(" · ")}
                 </Text>
               </View>
               <View style={styles.kpiItem}>
@@ -3521,25 +5659,28 @@ export default function App() {
               <Text style={styles.cardTitle}>{t("invoices_title")}</Text>
               <View style={styles.invoiceActions}>
                 <TouchableOpacity
-                  style={[
-                    styles.ghostButton,
-                    syncing ? styles.buttonDisabled : null,
-                  ]}
-                  onPress={handleSyncMail}
-                  disabled={syncing}
+                  style={styles.ghostButton}
+                  onPress={() => setReportVisible(true)}
                 >
-                  {syncing ? (
-                    <ActivityIndicator color={theme.text} size="small" />
-                  ) : (
-                    <Text style={styles.ghostButtonText}>
-                      {t("invoices_sync")}
-                    </Text>
-                  )}
+                  <Text style={styles.ghostButtonText}>{t("reports_button")}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.primarySmall}
-                  onPress={openInvoiceModal}
-                >
+                {mailConnected || phoneConnected ? (
+                  <TouchableOpacity
+                    style={[
+                      styles.ghostButton,
+                      !mailSyncCanSync || syncing || phoneSyncing ? styles.buttonDisabled : null,
+                    ]}
+                    onPress={handleSyncNow}
+                    disabled={!mailSyncCanSync || syncing || phoneSyncing}
+                  >
+                    {syncing || phoneSyncing ? (
+                      <ActivityIndicator color={theme.text} size="small" />
+                    ) : (
+                      <Text style={styles.ghostButtonText}>{t("sync_now")}</Text>
+                    )}
+                  </TouchableOpacity>
+                ) : null}
+                <TouchableOpacity style={styles.primarySmall} onPress={openInvoiceModal}>
                   <LinearGradient
                     colors={theme.accentGradientAlt}
                     start={{ x: 0, y: 0 }}
@@ -3554,32 +5695,102 @@ export default function App() {
               </View>
             </View>
 
+            {needsInvoiceSourceSetup ? (
             <View style={styles.mailSyncPanel}>
               <View style={styles.mailSyncHeader}>
                 <View style={styles.mailSyncInfo}>
-                  <Text style={styles.mailSyncTitle}>{t("sync_panel_title")}</Text>
-                  <Text style={styles.mailSyncDesc}>{t("sync_panel_desc")}</Text>
+                  <Text style={styles.mailSyncTitle}>
+                    {t("setup_title")}
+                  </Text>
+                    <Text style={styles.mailSyncDesc}>{t("setup_desc")}</Text>
                 </View>
                 <TouchableOpacity
-                  style={[
-                    styles.ghostButton,
-                    !mailSyncCanCopy && styles.buttonDisabled,
-                  ]}
-                  onPress={handleCopyMailSync}
-                  disabled={!mailSyncCanCopy}
+                  style={styles.primarySmall}
+                  onPress={openMailConnectModal}
                 >
-                  <Text style={styles.ghostButtonText}>{mailSyncCopyLabel}</Text>
+                  <LinearGradient
+                    colors={theme.accentGradientAlt}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.primarySmallInner}
+                  >
+                    <Text style={styles.primarySmallText}>
+                      {t("mail_sync_connect")}
+                    </Text>
+                  </LinearGradient>
                 </TouchableOpacity>
               </View>
-              <View style={styles.mailSyncAddressRow}>
-                <Text style={styles.mailSyncAddress}>
-                  {mailSyncAddress || "—"}
-                </Text>
+
+              <View style={styles.mailProviders}>
+                  {mailAccountsList.map(({ accountId, provider, data }) => {
+                    const providerAllowed = isMailProviderAllowed(provider);
+                    const statusText = getMailProviderStatusLabel(
+                      data,
+                      providerAllowed,
+                      t
+                    );
+                    const email = data?.email || "";
+                    const providerName = providerDisplayName(provider, t);
+                    const badgeLetter = (providerName || "?").charAt(0).toUpperCase();
+                    const badgeStyle =
+                      provider === "gmail"
+                        ? styles.mailProviderBadgeGmail
+                        : provider === "outlook"
+                          ? styles.mailProviderBadgeOutlook
+                          : styles.mailProviderBadgeGeneric;
+                    return (
+                      <View key={accountId} style={styles.mailProviderRow}>
+                      <View style={styles.mailProviderLeft}>
+                        <View style={[styles.mailProviderBadge, badgeStyle]}>
+                          <Text style={styles.mailProviderBadgeText}>
+                            {badgeLetter}
+                          </Text>
+                        </View>
+                        <View>
+                          <Text style={styles.mailProviderName}>
+                            {providerName}
+                          </Text>
+                          <Text style={styles.mailProviderStatus}>{statusText}</Text>
+                          {email ? (
+                            <Text style={styles.mailProviderEmail}>{email}</Text>
+                          ) : null}
+                        </View>
+                      </View>
+                      <View style={styles.mailProviderActions}>
+                          <TouchableOpacity
+                            style={styles.ghostButton}
+                            onPress={() => handleDisconnectProvider(accountId)}
+                          >
+                            <Text style={styles.ghostButtonText}>
+                              {t("mail_sync_disconnect")}
+                            </Text>
+                          </TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                })}
               </View>
+
               <Text style={[styles.mutedText, styles.smallText, styles.mailSyncStatus]}>
                 {mailSyncStatusText}
               </Text>
+
+              <View style={[styles.mailProviderRow, { marginTop: 12 }]}>
+                <View style={styles.mailProviderLeft}>
+                  <View style={[styles.mailProviderBadge, styles.mailProviderBadgeGeneric]}>
+                    <Text style={styles.mailProviderBadgeText}>P</Text>
+                  </View>
+                  <View>
+                    <Text style={styles.mailProviderName}>{t("phone_title")}</Text>
+                    <Text style={styles.mailProviderStatus}>{t("phone_desc")}</Text>
+                  </View>
+                </View>
+                <TouchableOpacity style={styles.ghostButton} onPress={openSettings}>
+                  <Text style={styles.ghostButtonText}>{t("setup_open_settings")}</Text>
+                </TouchableOpacity>
+              </View>
             </View>
+            ) : null}
 
             {syncMessage ? (
               <Text style={[styles.mutedText, styles.smallText]}>
@@ -3589,40 +5800,59 @@ export default function App() {
 
             {!invoicesReady ? (
               <ActivityIndicator color={theme.accent} style={styles.loadingBlock} />
-            ) : invoices.length ? (
-              invoices.map((invoice) => (
-                <View key={invoice.id} style={styles.invoiceRow}>
-                  <View style={styles.invoiceRowHeader}>
-                    <Text style={styles.invoiceCompany}>
-                      {invoice.company || t("invoice_unknown_company")}
-                    </Text>
-                    <View style={statusStyles(invoice.status)}>
-                      <Text style={statusTextStyles(invoice.status)}>
-                        {invoiceStatusLabel(invoice.status)}
+            ) : workspaceInvoices.length ? (
+              workspaceInvoices.map((invoice) => {
+                const effectiveStatus = getInvoiceEffectiveStatus(invoice);
+                return (
+                  <View key={invoice.id} style={styles.invoiceRow}>
+                    <View style={styles.invoiceRowHeader}>
+                      <Text style={styles.invoiceCompany}>
+                        {invoice.company || t("invoice_unknown_company")}
+                      </Text>
+                      <View style={statusStyles(effectiveStatus)}>
+                        <Text style={statusTextStyles(effectiveStatus)}>
+                          {invoiceStatusLabel(effectiveStatus)}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.invoiceMeta}>
+                      <Text style={styles.invoiceMetaText}>
+                        {invoice.category || t("invoice_category_default")}
+                      </Text>
+                      <Text style={styles.invoiceMetaText}>
+                        #{invoice.number || t("invoice_number_fallback")}
+                      </Text>
+                      <Text style={styles.invoiceMetaText}>
+                        {formatDate(invoice.issueDate, locale)}
                       </Text>
                     </View>
+                    <View style={styles.invoiceAmounts}>
+                      <Text style={styles.invoiceAmount}>
+                        {formatAmount(invoice.amount, invoice.currency)}
+                      </Text>
+                      <Text style={styles.invoiceDue}>
+                        {t("invoice_due_prefix")} {formatDate(invoice.dueDate, locale)}
+                      </Text>
+                    </View>
+                    <View style={styles.invoiceRowFooter}>
+                      <TouchableOpacity
+                        style={styles.ghostButton}
+                        onPress={() => setActionInvoice(invoice)}
+                      >
+                        <Text style={styles.ghostButtonText}>{t("action_title")}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.ghostButton, styles.ghostButtonDanger]}
+                        onPress={() => handleDeleteInvoice(invoice)}
+                      >
+                        <Text style={[styles.ghostButtonText, styles.ghostButtonTextDanger]}>
+                          {t("table_actions_delete")}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
-                  <View style={styles.invoiceMeta}>
-                    <Text style={styles.invoiceMetaText}>
-                      {invoice.category || t("invoice_category_default")}
-                    </Text>
-                    <Text style={styles.invoiceMetaText}>
-                      #{invoice.number || t("invoice_number_fallback")}
-                    </Text>
-                    <Text style={styles.invoiceMetaText}>
-                      {formatDate(invoice.issueDate, locale)}
-                    </Text>
-                  </View>
-                  <View style={styles.invoiceAmounts}>
-                    <Text style={styles.invoiceAmount}>
-                      {formatAmount(invoice.amount, invoice.currency)}
-                    </Text>
-                    <Text style={styles.invoiceDue}>
-                      {t("invoice_due_prefix")} {formatDate(invoice.dueDate, locale)}
-                    </Text>
-                  </View>
-                </View>
-              ))
+                );
+              })
             ) : (
               <Text style={[styles.mutedText, styles.smallText]}>
                 {t("invoices_empty")}
@@ -3630,6 +5860,165 @@ export default function App() {
             )}
           </View>
         </ScrollView>
+
+        <Modal
+          transparent
+          visible={!!actionInvoice}
+          animationType="slide"
+          onRequestClose={() => setActionInvoice(null)}
+        >
+          <Pressable style={styles.modalBackdrop} onPress={() => setActionInvoice(null)}>
+            <TouchableWithoutFeedback>
+              <View style={styles.modalPanel}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>{t("action_title")}</Text>
+                  <TouchableOpacity style={styles.modalClose} onPress={() => setActionInvoice(null)}>
+                    <Text style={styles.modalCloseText}>X</Text>
+                  </TouchableOpacity>
+                </View>
+                <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent}>
+                  <Text style={styles.cardTitle}>{actionInvoice?.company || t("invoice_unknown_company")}</Text>
+                  <Text style={[styles.mutedText, styles.smallText]}>
+                    {formatAmount(actionInvoice?.amount, actionInvoice?.currency)} · {t(`invoice_status_${getInvoiceEffectiveStatus(actionInvoice || {})}`)}
+                  </Text>
+                  <View style={styles.chipRow}>
+                    <View style={[styles.chip, styles.chipActive]}>
+                      <Text style={[styles.chipText, styles.chipTextActive]}>
+                        {t(`space_${planWorkspaceSpace}`)}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={[styles.sectionTitle, { marginTop: 16 }]}>{t("evidence_title")}</Text>
+                  <View style={styles.mailProviderRow}>
+                    <View style={styles.mailProviderLeft}>
+                      <View style={[styles.mailProviderBadge, styles.mailProviderBadgeGeneric]}><Text style={styles.mailProviderBadgeText}>✓</Text></View>
+                      <View>
+                        <Text style={styles.mailProviderName}>{t("evidence_confidence")}</Text>
+                        <Text style={styles.mailProviderStatus}>{selectedIntelligence?.intelligence.evidence.confidence || 0}%</Text>
+                      </View>
+                    </View>
+                  </View>
+                  {(selectedIntelligence?.intelligence.evidence.items || []).map((item, index) => (
+                    <View key={`${item.type}-${index}`} style={styles.mailProviderRow}>
+                      <View style={styles.mailProviderLeft}>
+                        <View style={[styles.mailProviderBadge, styles.mailProviderBadgeGeneric]}><Text style={styles.mailProviderBadgeText}>{item.verified ? "✓" : "!"}</Text></View>
+                        <View>
+                          <Text style={styles.mailProviderName}>{t("evidence_source")}</Text>
+                          <Text style={styles.mailProviderStatus}>{sensitivePreviewsHidden ? t("privacy_hidden") : item.label}</Text>
+                        </View>
+                      </View>
+                    </View>
+                  ))}
+                  <TouchableOpacity style={styles.primaryButton} onPress={handleActionPaid}>
+                    <Text style={styles.primaryButtonText}>{t("action_paid")}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.ghostButtonWide} onPress={() => handleOfficialAction("payment")}>
+                    <Text style={styles.ghostButtonText}>{t("action_payment")}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.ghostButtonWide, styles.ghostButtonDanger]} onPress={() => handleOfficialAction("cancel")}>
+                    <Text style={[styles.ghostButtonText, styles.ghostButtonTextDanger]}>{t("action_cancel")}</Text>
+                  </TouchableOpacity>
+                  <TextInput
+                    style={styles.input}
+                    placeholder={t("reminder_placeholder")}
+                    placeholderTextColor={theme.placeholder}
+                    value={reminderInput}
+                    onChangeText={setReminderInput}
+                  />
+                  <TouchableOpacity style={styles.ghostButtonWide} onPress={handleSaveReminder}>
+                    <Text style={styles.ghostButtonText}>{t("action_reminder")}</Text>
+                  </TouchableOpacity>
+                </ScrollView>
+              </View>
+            </TouchableWithoutFeedback>
+          </Pressable>
+        </Modal>
+
+        <Modal
+          transparent
+          visible={sourceHubVisible}
+          animationType="fade"
+          onRequestClose={() => setSourceHubVisible(false)}
+        >
+          <Pressable style={styles.modalBackdrop} onPress={() => setSourceHubVisible(false)}>
+            <TouchableWithoutFeedback>
+              <View style={styles.modalPanel}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>{t("inbox_mesh")}</Text>
+                  <TouchableOpacity style={styles.modalClose} onPress={() => setSourceHubVisible(false)}><Text style={styles.modalCloseText}>X</Text></TouchableOpacity>
+                </View>
+                <Text style={[styles.mutedText, styles.smallText]}>{t("inbox_mesh_desc")}</Text>
+                <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent}>
+                  {Intelligence.providerCatalog(plan).map((provider) => (
+                    <TouchableOpacity
+                      key={provider.id}
+                      style={[styles.mailProviderRow, !provider.available && styles.buttonDisabled]}
+                      disabled={!provider.available}
+                      onPress={() => {
+                        if (provider.mode === "oauth") {
+                          setSourceHubVisible(false);
+                          openMailConnectModal();
+                        } else {
+                          shareForwardingAddress();
+                        }
+                      }}
+                    >
+                      <View style={styles.mailProviderLeft}>
+                        <View style={[styles.mailProviderBadge, styles.mailProviderBadgeGeneric]}><Text style={styles.mailProviderBadgeText}>{provider.name.charAt(0)}</Text></View>
+                        <View>
+                          <Text style={styles.mailProviderName}>{provider.name}</Text>
+                          <Text style={styles.mailProviderStatus}>{provider.mode === "oauth" ? "OAuth" : t("forwarding_address")}</Text>
+                        </View>
+                      </View>
+                      <Text style={styles.ghostButtonText}>›</Text>
+                    </TouchableOpacity>
+                  ))}
+                  <Text style={[styles.sectionTitle, { marginTop: 14 }]}>{t("forwarding_address")}</Text>
+                  <Text selectable style={[styles.mutedText, styles.smallText]}>{forwardingAddress || "-"}</Text>
+                  <TouchableOpacity style={styles.ghostButtonWide} onPress={shareForwardingAddress} disabled={!forwardingAddress}>
+                    <Text style={styles.ghostButtonText}>{t("forwarding_copy")}</Text>
+                  </TouchableOpacity>
+                </ScrollView>
+              </View>
+            </TouchableWithoutFeedback>
+          </Pressable>
+        </Modal>
+
+        <Modal
+          transparent
+          visible={privacyVisible}
+          animationType="fade"
+          onRequestClose={() => setPrivacyVisible(false)}
+        >
+          <Pressable style={styles.modalBackdrop} onPress={() => setPrivacyVisible(false)}>
+            <TouchableWithoutFeedback>
+              <View style={styles.modalPanel}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>{t("privacy_vault")}</Text>
+                  <TouchableOpacity style={styles.modalClose} onPress={() => setPrivacyVisible(false)}><Text style={styles.modalCloseText}>X</Text></TouchableOpacity>
+                </View>
+                <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent}>
+                  <Text style={[styles.mutedText, styles.smallText]}>{t("privacy_desc")}</Text>
+                  {["cloud", "offline", "control"].map((item) => (
+                    <View key={item} style={styles.mailProviderRow}>
+                      <View style={styles.mailProviderLeft}>
+                        <View style={[styles.mailProviderBadge, styles.mailProviderBadgeGeneric]}><Text style={styles.mailProviderBadgeText}>✓</Text></View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.mailProviderName}>{t(`vault_${item}_title`)}</Text>
+                          <Text style={styles.mailProviderStatus}>{t(`vault_${item}_desc`)}</Text>
+                        </View>
+                      </View>
+                    </View>
+                  ))}
+                  <TouchableOpacity style={styles.ghostButtonWide} onPress={toggleSensitivePreviews}>
+                    <Text style={styles.ghostButtonText}>{sensitivePreviewsHidden ? `✓ ${t("vault_previews")}` : t("vault_previews")}</Text>
+                  </TouchableOpacity>
+                </ScrollView>
+              </View>
+            </TouchableWithoutFeedback>
+          </Pressable>
+        </Modal>
+
         <Modal
           transparent
           visible={settingsVisible}
@@ -3646,6 +6035,11 @@ export default function App() {
                   </TouchableOpacity>
                 </View>
 
+                <ScrollView
+                  style={styles.settingsScroll}
+                  contentContainerStyle={styles.settingsScrollContent}
+                  showsVerticalScrollIndicator={false}
+                >
                 <View style={styles.modalSection}>
                   <Text style={styles.sectionTitle}>{t("settings_appearance")}</Text>
                   <View style={styles.chipRow}>
@@ -3702,6 +6096,134 @@ export default function App() {
                   >
                     <Text style={styles.languageButtonText}>{languageLabel}</Text>
                   </TouchableOpacity>
+                </View>
+
+                <View style={styles.modalSection}>
+                  <Text style={styles.sectionTitle}>{t("mail_settings_title")}</Text>
+                  <Text style={[styles.mutedText, styles.smallText]}>
+                    {t("mail_settings_desc")}
+                  </Text>
+                  <TouchableOpacity style={styles.ghostButtonWide} onPress={openSourceHubFromSettings}>
+                    <Text style={styles.ghostButtonText}>{t("inbox_mesh")}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.ghostButtonWide} onPress={openPrivacyFromSettings}>
+                    <Text style={styles.ghostButtonText}>{t("privacy_vault")}</Text>
+                  </TouchableOpacity>
+                  {mailAccountsList.length ? (
+                    mailAccountsList.map(({ accountId, provider, data }) => (
+                      <View key={accountId} style={styles.mailProviderRow}>
+                        <View style={styles.mailProviderLeft}>
+                          <View style={[styles.mailProviderBadge, styles.mailProviderBadgeGeneric]}>
+                            <Text style={styles.mailProviderBadgeText}>
+                              {providerDisplayName(provider, t).charAt(0).toUpperCase()}
+                            </Text>
+                          </View>
+                          <View>
+                            <Text style={styles.mailProviderName}>
+                              {providerDisplayName(provider, t)}
+                            </Text>
+                            <Text style={styles.mailProviderStatus}>
+                              {data?.email || t("mail_sync_status_not_connected")}
+                            </Text>
+                          </View>
+                        </View>
+                        <TouchableOpacity
+                          style={styles.ghostButton}
+                          onPress={() => handleDisconnectProvider(accountId)}
+                        >
+                          <Text style={styles.ghostButtonText}>
+                            {t("mail_sync_disconnect")}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    ))
+                  ) : (
+                    <Text style={[styles.mutedText, styles.smallText]}>
+                      {t("mail_sync_panel_empty")}
+                    </Text>
+                  )}
+                  <TouchableOpacity style={styles.primarySmall} onPress={openMailConnectModal}>
+                    <LinearGradient
+                      colors={theme.accentGradientAlt}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.primarySmallInner}
+                    >
+                      <Text style={styles.primarySmallText}>
+                        {t("mail_sync_connect")}
+                      </Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.modalSection}>
+                  <Text style={styles.sectionTitle}>{t("phone_title")}</Text>
+                  <Text style={[styles.mutedText, styles.smallText]}>
+                    {t("phone_desc")}
+                  </Text>
+                  <Text style={styles.fieldLabel}>{t("phone_inbox_number")}</Text>
+                  <Text style={styles.mailProviderEmail}>
+                    {phoneInboxNumber || t("phone_inbox_missing")}
+                  </Text>
+                  <Text style={styles.fieldLabel}>{t("phone_number")}</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="+40 7xx xxx xxx"
+                    placeholderTextColor={theme.placeholder}
+                    keyboardType="phone-pad"
+                    value={phone}
+                    onChangeText={setPhone}
+                  />
+                  <View style={styles.modalFooterRow}>
+                    <TouchableOpacity
+                      style={[styles.ghostButton, phoneBusy ? styles.buttonDisabled : null]}
+                      onPress={handleSavePhone}
+                      disabled={phoneBusy}
+                    >
+                      <Text style={styles.ghostButtonText}>{t("phone_save")}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.ghostButton, phoneBusy ? styles.buttonDisabled : null]}
+                      onPress={handleRequestPhoneCode}
+                      disabled={phoneBusy}
+                    >
+                      <Text style={styles.ghostButtonText}>{t("phone_send_code")}</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <TextInput
+                    style={styles.input}
+                    placeholder={t("phone_code")}
+                    placeholderTextColor={theme.placeholder}
+                    keyboardType="number-pad"
+                    value={phoneCode}
+                    onChangeText={(value) => setPhoneCode(value.replace(/\D/g, "").slice(0, 6))}
+                  />
+                  <TouchableOpacity
+                    style={[styles.primarySmall, phoneBusy ? styles.buttonDisabled : null]}
+                    onPress={handleVerifyPhoneCode}
+                    disabled={phoneBusy}
+                  >
+                    <LinearGradient
+                      colors={theme.accentGradientAlt}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.primarySmallInner}
+                    >
+                      <Text style={styles.primarySmallText}>{t("phone_verify")}</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                  {phoneConnected ? (
+                    <TouchableOpacity
+                      style={styles.ghostButton}
+                      onPress={handleSyncPhoneInbox}
+                      disabled={phoneSyncing}
+                    >
+                      <Text style={styles.ghostButtonText}>{t("phone_sync_now")}</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  <Text style={[styles.mutedText, styles.smallText]}>
+                    {phoneStatus || (phoneConnected ? `${t("phone_verified")} ${maskPhone(phone)}` : t("phone_empty"))}
+                  </Text>
                 </View>
 
                 <View style={styles.modalSection}>
@@ -3766,6 +6288,7 @@ export default function App() {
                     </Text>
                   </TouchableOpacity>
                 </View>
+                </ScrollView>
               </View>
             </TouchableWithoutFeedback>
           </Pressable>
@@ -3813,13 +6336,15 @@ export default function App() {
                   value={profileLast}
                   onChangeText={setProfileLast}
                 />
-                <TextInput
-                  style={styles.input}
-                  placeholder={t("profile_company")}
-                  placeholderTextColor={theme.placeholder}
-                  value={profileCompany}
-                  onChangeText={setProfileCompany}
-                />
+                {planIsBusiness ? (
+                  <TextInput
+                    style={styles.input}
+                    placeholder={t("profile_company")}
+                    placeholderTextColor={theme.placeholder}
+                    value={profileCompany}
+                    onChangeText={setProfileCompany}
+                  />
+                ) : null}
 
                 {profileMessage ? (
                   <Text style={[styles.mutedText, styles.smallText]}>
@@ -3844,6 +6369,156 @@ export default function App() {
                     {t("profile_open_website")}
                   </Text>
                 </TouchableOpacity>
+              </View>
+            </TouchableWithoutFeedback>
+          </Pressable>
+        </Modal>
+
+        <Modal
+          transparent
+          visible={mailConnectVisible}
+          animationType="fade"
+          onRequestClose={() => setMailConnectVisible(false)}
+        >
+          <Pressable
+            style={styles.modalBackdrop}
+            onPress={() => setMailConnectVisible(false)}
+          >
+            <TouchableWithoutFeedback>
+              <View style={styles.modalPanel}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>
+                    {t("mail_sync_connect_title")}
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.modalClose}
+                    onPress={() => setMailConnectVisible(false)}
+                  >
+                    <Text style={styles.modalCloseText}>X</Text>
+                  </TouchableOpacity>
+                </View>
+                <Text style={[styles.mutedText, styles.smallText]}>
+                  {t("mail_sync_connect_desc")}
+                </Text>
+                <Text style={[styles.fieldLabel, { marginTop: 10 }]}>
+                  {t("mail_sync_connect_email_label")}
+                </Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder={t("mail_sync_connect_email_placeholder")}
+                  placeholderTextColor={theme.placeholder}
+                  value={mailConnectEmail}
+                  onChangeText={handleMailConnectEmailChange}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                />
+                <View style={styles.mailConnectProviderRow}>
+                  <Text style={[styles.mutedText, styles.smallText]}>
+                    {t("mail_sync_connect_provider_label")}
+                  </Text>
+                  <Text style={styles.mailConnectProviderValue}>
+                    {mailConnectProviderLabel}
+                  </Text>
+                </View>
+                {mailConnectError ? (
+                  <Text style={styles.errorText}>{mailConnectError}</Text>
+                ) : null}
+                <View style={styles.modalFooterRow}>
+                  <TouchableOpacity
+                    style={styles.ghostButton}
+                    onPress={() => setMailConnectVisible(false)}
+                  >
+                    <Text style={styles.ghostButtonText}>
+                      {t("mail_sync_connect_cancel")}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.primarySmall,
+                      mailConnectBusy ? styles.buttonDisabled : null,
+                    ]}
+                    onPress={handleConnectEmail}
+                    disabled={mailConnectBusy}
+                  >
+                    <LinearGradient
+                      colors={theme.accentGradientAlt}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={[
+                        styles.primarySmallInner,
+                        mailConnectBusy ? styles.buttonDisabled : null,
+                      ]}
+                    >
+                      <Text style={styles.primarySmallText}>
+                        {mailConnectBusy
+                          ? t("mail_sync_connect_provider_detecting")
+                          : t("mail_sync_connect_continue")}
+                      </Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </Pressable>
+        </Modal>
+
+        <Modal
+          transparent
+          visible={reportVisible}
+          animationType="fade"
+          onRequestClose={() => setReportVisible(false)}
+        >
+          <Pressable style={styles.modalBackdrop} onPress={() => setReportVisible(false)}>
+            <TouchableWithoutFeedback>
+              <View style={styles.modalPanel}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>{t("reports_title")}</Text>
+                  <TouchableOpacity
+                    style={styles.modalClose}
+                    onPress={() => setReportVisible(false)}
+                  >
+                    <Text style={styles.modalCloseText}>X</Text>
+                  </TouchableOpacity>
+                </View>
+                <Text style={[styles.mutedText, styles.smallText]}>
+                  {t("reports_desc")}
+                </Text>
+                <View style={styles.chipRow}>
+                  {REPORT_FIELDS.map((field) => {
+                    const active = reportFields.includes(field);
+                    return (
+                      <TouchableOpacity
+                        key={field}
+                        style={[styles.chip, active && styles.chipActive]}
+                        onPress={() =>
+                          setReportFields((prev) =>
+                            prev.includes(field)
+                              ? prev.filter((item) => item !== field)
+                              : [...prev, field]
+                          )
+                        }
+                      >
+                        <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                          {reportFieldLabel(field, t)}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <View style={styles.modalFooterRow}>
+                  {["csv", "json", "html", "txt", "pdf"].map((format) => (
+                    <TouchableOpacity
+                      key={format}
+                      disabled={reportBusy}
+                      style={styles.ghostButton}
+                      onPress={() => handleExportReport(format)}
+                    >
+                      <Text style={styles.ghostButtonText}>
+                        {t(`reports_${format}`)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
               </View>
             </TouchableWithoutFeedback>
           </Pressable>

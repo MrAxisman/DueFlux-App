@@ -2,6 +2,8 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("DueFlux", {
   getVersion: () => ipcRenderer.invoke("app:getVersion"),
+  openExternal: (url) => ipcRenderer.invoke("app:openExternal", url),
+  printReportPdf: (html) => ipcRenderer.invoke("reports:pdf", html),
 });
 
 contextBridge.exposeInMainWorld("DueFluxUpdater", {
