@@ -4483,6 +4483,7 @@ export default function App() {
   async function deleteInvoiceById(invoiceId) {
     if (!user?.uid || !invoiceId) return false;
     const queued = await getOfflineQueue(user.uid);
+    if (auth.currentUser?.uid !== user.uid) return false;
     if (!isOnline || queued.some(item => (item.id || item.localId) === invoiceId)) {
       const nextInvoices = invoices.filter((invoice) => invoice.id !== invoiceId);
       setInvoices(nextInvoices);
@@ -4529,6 +4530,7 @@ export default function App() {
   async function patchInvoiceFromAction(invoice, patch) {
     if (!user?.uid || !invoice?.id) return false;
     const queued = await getOfflineQueue(user.uid);
+    if (auth.currentUser?.uid !== user.uid) return false;
     if (!isOnline || queued.some(item => (item.id || item.localId) === invoice.id)) {
       const next = invoices.map((item) => item.id === invoice.id ? { ...item, ...patch } : item);
       setInvoices(next);
@@ -4551,7 +4553,7 @@ export default function App() {
     await patchInvoiceFromAction(actionInvoice, {
       status: "paid",
       paymentSource: "manual_confirmation",
-      paidAt: isOnline ? serverTimestamp() : new Date().toISOString(),
+      paidAt: new Date().toISOString(),
     });
     setSyncMessage(t("action_paid_success"));
     setActionInvoice(null);
