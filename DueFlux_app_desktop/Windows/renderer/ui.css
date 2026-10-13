@@ -135,6 +135,7 @@ html[data-theme] .card:hover { transform: none; }
 html[data-theme] .card { padding: 24px; }
 html[data-theme] .card h3 { font-size: 18px; line-height: 1.4; letter-spacing: -.02em; }
 html[data-theme] :is(.small, .muted) { line-height: 1.6; }
+html[data-theme] .small { font-size: 13px; }
 
 html[data-theme] #app-screen .app-main > .app-hero {
   padding: clamp(24px, 2.6vw, 36px);
@@ -227,7 +228,7 @@ html[data-theme] :is(.modal-backdrop, .settings-backdrop) { background: rgba(4, 
 html[data-theme] .modal { padding: 24px; }
 html[data-theme] .modal-header { gap: 16px; align-items: flex-start; }
 html[data-theme] .modal-title { font-size: 22px; letter-spacing: -.03em; line-height: 1.3; }
-html[data-theme] #settings-backdrop .settings-panel { width: min(480px, calc(100vw - 24px)); max-width: none; padding: 24px; }
+html[data-theme] #settings-backdrop .settings-panel { width: min(480px, calc(100vw - 24px)); max-width: none; height: calc(100dvh - 24px); max-height: calc(100dvh - 24px); margin: 12px; padding: 24px; font-size: 14px; }
 html[data-theme] #settings-backdrop .settings-header { background: var(--ui-surface); padding-block: 4px 16px; }
 html[data-theme] .settings-section { border-color: var(--ui-line); margin-top: 8px; padding-top: 20px; }
 html[data-theme] .settings-section h3 { font-size: 14px; margin-bottom: 12px; }
@@ -272,6 +273,8 @@ html[data-theme] .device-sync-panel { margin-block: 16px; border-color: var(--ui
   .app-hero-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .hero-metric:last-child { grid-column: 1 / -1; padding-block: 12px; }
   .hero-metric { padding: 14px; }
+  .hero-metric strong { font-size: 18px; }
+  .hero-metric:last-child strong { font-size: 14px; }
   html[data-theme] .modal, html[data-theme] #settings-backdrop .settings-panel { padding: 20px; }
   .local-lock { padding: 16px; }
   .local-lock-card { padding: 24px; }
