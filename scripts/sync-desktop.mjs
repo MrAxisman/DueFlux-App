@@ -6,6 +6,7 @@ const root = path.resolve(import.meta.dirname, '..', 'DueFlux_app_desktop');
 const files = ['main.js', 'preload.js', 'package.json', 'package-lock.json',
   'renderer/app.js', 'renderer/index.html', 'renderer/style.css',
   'renderer/feature-locales.js', 'renderer/product-intelligence.js', 'renderer/offline-queue.js',
+  'renderer/dialog-accessibility.js',
   'scripts/notarize.js', 'scripts/prepare-release.js', 'scripts/start-electron.js'];
 for (const file of files) {
   const destination = path.join(root, 'Linux', file);

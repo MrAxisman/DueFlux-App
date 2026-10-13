@@ -2,14 +2,19 @@
   "name": "dueflux-workspace",
   "version": "0.1.0",
   "private": true,
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "start": "npm --prefix DueFlux_app_desktop/Windows start",
     "start:mobile": "npm --prefix DueFlux_app_mobile/expo start",
     "test": "node --test scripts/test-offline-queue.js scripts/test-mobile-data.js && node scripts/test-product-intelligence.js && node scripts/audit-i18n.mjs",
     "test:desktop": "node scripts/test-electron.cjs",
     "sync:desktop": "node scripts/sync-desktop.mjs",
-    "sync:cloud": "node scripts/sync-cloud-bundle.mjs"
+    "sync:cloud": "node scripts/sync-cloud-bundle.mjs",
+    "test:ui": "node scripts/test-app-ui.cjs"
   },
-  "devDependencies": { "playwright": "1.63.0" }
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
 }

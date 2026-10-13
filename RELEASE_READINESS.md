@@ -1,6 +1,6 @@
 # DueFlux Release Readiness
 
-Updated: 2026-10-12.
+Updated: 2026-10-13.
 
 For the Windows development toolchain, run `./scripts/use-toolchain.ps1` in the terminal. It verifies and installs Node LTS 24.21.0 and npm 12.2.0 inside the ignored `.tools` directory and activates them for that terminal. Start desktop with `npm start` from the workspace root; use `npm run start:mobile` for Expo.
 
@@ -13,6 +13,12 @@ For the Windows development toolchain, run `./scripts/use-toolchain.ps1` in the 
 - `npm run sync:cloud` copies an explicit backend allowlist into the private website repository's `.cloud` directory, without credentials.
 
 ## Implemented
+
+- Device sync shows pending mutation counts, sync progress and failures, with an online retry action. Conflicts keep the local queue rather than discarding changes.
+- Cloud snapshots are overlaid with durable pending invoice mutations on desktop and mobile. Offline changes are persisted before updating the interface; failed saves keep the invoice editor open.
+- Mobile invoice search supports multiple terms, accents and non-Latin text, with status filters and resettable empty states. Returning to the foreground retries device sync when online.
+- Desktop dialogs have accessible titles, translated close labels, focus containment and restoration. Escape closes only the active dialog. Imported invoice/account text is escaped before HTML rendering.
+- Browser regression tests cover twelve languages, responsive widths, themes, keyboard dialogs, untrusted invoice text and failed offline writes. CI now validates these checks on pull requests.
 
 - Firestore rules prevent self-granted subscriptions and forged verification, evidence and delivery statuses.
 - Private OTP challenges enforce transactional cooldowns, daily limits, attempts and one-use consumption.
@@ -30,12 +36,13 @@ For the Windows development toolchain, run `./scripts/use-toolchain.ps1` in the 
 npm ci --ignore-scripts
 npm test
 npm run test:desktop
+npm run test:ui
 pwsh -NoProfile -File scripts/audit-platform-sync.ps1 -Strict -IncludeCloud
 node DueFlux_website/scripts/audit-i18n.mjs
 npm --prefix DueFlux_app_mobile/expo run lint
 ```
 
-Desktop tests require installed desktop dependencies. The test launches a hidden Electron window and verifies a real PDF. Inside the mobile directory, `npx expo-doctor` passed all 21 checks; `npx expo export --platform android --platform ios --output-dir dist-audit` generated both bundles.
+Desktop tests require installed desktop dependencies. The test launches a hidden Electron window and verifies a real PDF. Browser UI tests use blocked cloud access and sample data; install Chromium with `npx playwright install chromium` or set `DUEFLUX_BROWSER_CHANNEL=chrome` for installed Chrome. Inside the mobile directory, `npx expo-doctor` passed all 21 checks in the previous release audit; `npx expo export --platform android --platform ios --output-dir dist-audit` validates the current bundles.
 
 Backend tests use Java 21, Firebase CLI and a demo emulator project. Unset `DEBUG` first to prevent verbose environment logging:
 

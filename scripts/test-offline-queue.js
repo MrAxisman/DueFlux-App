@@ -1,6 +1,15 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { create } = require('../DueFlux_app_desktop/Windows/renderer/offline-queue');
+const { create, projectInvoices, matchesInvoice } = require('../DueFlux_app_desktop/Windows/renderer/offline-queue');
+const fs = require('node:fs');
+const path = require('node:path');
+
+test('all shipped platforms use the same offline queue implementation', () => {
+  const canonical = fs.readFileSync(path.join(__dirname, '../DueFlux_app_desktop/Windows/renderer/offline-queue.js'), 'utf8');
+  for (const file of ['../DueFlux_app_desktop/Linux/renderer/offline-queue.js', '../DueFlux_app_mobile/expo/offlineQueue.js']) {
+    assert.equal(fs.readFileSync(path.join(__dirname, file), 'utf8'), canonical);
+  }
+});
 
 test('lost acknowledgement retries the same operation, without losing new entries', async () => {
   let stored = [{ type: 'addInvoice', localId: 'local_1', data: {} }];
@@ -31,6 +40,50 @@ test('parallel flushes share one consumer; changing accounts pauses replay', asy
 test('storage failure never reports a mutation as saved', async () => {
   const queue = create({ read: () => [], write: () => { throw new Error('disk full'); }, apply: async () => {} });
   await assert.rejects(queue.edit('a', () => [{ type: 'addInvoice' }]), /disk full/);
+});
+
+test('failed writes cannot mutate nested data or announce a saved change', async () => {
+  const stored = [{ type: 'addInvoice', localId: 'a', data: { amount: 10 } }];
+  let announced = false;
+  const queue = create({ read: () => stored, write: () => { throw new Error('disk full'); }, apply: async () => {} });
+  queue.subscribe(() => { announced = true; });
+  await assert.rejects(queue.edit('a', items => { items[0].data.amount = 20; return items; }), /disk full/);
+  assert.equal(stored[0].data.amount, 10);
+  assert.equal(announced, false);
+});
+
+test('observers see durable queue counts and can unsubscribe without affecting replay', async () => {
+  let stored = []; const counts = [];
+  const queue = create({ read: () => stored, write: (_uid, items) => { stored = items; }, apply: async () => {} });
+  const unsubscribe = queue.subscribe((uid, count) => counts.push([uid, count]));
+  queue.subscribe(() => { throw new Error('UI unmounted'); });
+  await queue.edit('alice', () => [{ type: 'deleteInvoice', id: 'a' }]);
+  unsubscribe();
+  await queue.flush('alice', () => true);
+  assert.deepEqual(counts, [['alice', 1]]);
+  assert.equal(stored.length, 0);
+});
+
+test('cloud snapshots preserve pending additions, payments and deletes without duplicates', () => {
+  const base = [{ id: 'a', status: 'unpaid', company: 'Cloud' }, { id: 'b' }, { id: 'local_c', amount: 5 }];
+  const queue = [{ type: 'updateInvoice', id: 'a', data: { status: 'paid' }, dispatched: true },
+    { type: 'deleteInvoice', id: 'b' }, { type: 'addInvoice', localId: 'local_c', data: { amount: 10 } },
+    { type: 'addInvoice', localId: 'local_d', data: { amount: 20 } }];
+  const result = projectInvoices(base, queue);
+  assert.deepEqual(result.map(item => item.id), ['a', 'local_c', 'local_d']);
+  assert.equal(result[0].status, 'paid');
+  assert.equal(result[1].amount, 10);
+  assert.equal(base[0].status, 'unpaid', 'cloud base must not be mutated');
+  assert.equal(projectInvoices(result, queue).length, result.length, 'projection is idempotent');
+});
+
+test('search matches accents, multiple terms, numbers and non-Latin text', () => {
+  const invoice = { company: 'Energie România', category: 'Acasă', number: 'DF-42', amount: 123, currency: 'RON' };
+  assert.equal(matchesInvoice(invoice, 'romania 42'), true);
+  assert.equal(matchesInvoice(invoice, ' acasa 123 '), true);
+  assert.equal(matchesInvoice(invoice, 'romania EUR'), false);
+  assert.equal(matchesInvoice({ company: '電気 العربية' }, 'العربية'), true);
+  assert.equal(matchesInvoice(invoice, ''), true);
 });
 
 test('pending payload is read at dispatch time and dispatch state survives a lost response', async () => {

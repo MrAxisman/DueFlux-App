@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  AppState,
   Alert,
   Animated,
   Easing,
@@ -2305,6 +2306,18 @@ function createStyles(theme) {
     color: theme.text,
     fontWeight: "700",
   },
+  deviceSyncPanel: {
+    flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 12,
+    padding: 14, marginVertical: 16, borderRadius: 14,
+    backgroundColor: theme.surfaceSoft, borderWidth: 1, borderColor: theme.border,
+  },
+  invoiceFilters: { gap: 8, paddingVertical: 12 },
+  filterChip: {
+    minHeight: 44, paddingHorizontal: 14, justifyContent: "center",
+    borderRadius: 22, borderWidth: 1, borderColor: theme.border,
+  },
+  filterChipActive: { backgroundColor: theme.surface, borderColor: theme.accent },
+  invoiceEmpty: { padding: 24, gap: 16, alignItems: "center", borderRadius: 16, backgroundColor: theme.surface },
   invoiceHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -3819,6 +3832,10 @@ export default function App() {
   const [error, setError] = useState("");
   const [invoices, setInvoices] = useState([]);
   const [invoicesReady, setInvoicesReady] = useState(false);
+  const [invoiceSearch, setInvoiceSearch] = useState("");
+  const [invoiceFilter, setInvoiceFilter] = useState("all");
+  const [pendingChanges, setPendingChanges] = useState(0);
+  const [deviceSyncPhase, setDeviceSyncPhase] = useState("ready");
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [profileVisible, setProfileVisible] = useState(false);
   const [invoiceVisible, setInvoiceVisible] = useState(false);
@@ -3937,6 +3954,11 @@ export default function App() {
   const workspaceInvoices = useMemo(
     () => invoices.map((invoice) => ({ ...invoice, spaceId: planWorkspaceSpace })),
     [invoices, planWorkspaceSpace]
+  );
+  const visibleInvoices = useMemo(
+    () => workspaceInvoices.filter((invoice) => OfflineQueue.matchesInvoice(invoice, invoiceSearch) &&
+      (invoiceFilter === "all" || getInvoiceEffectiveStatus(invoice) === invoiceFilter)),
+    [workspaceInvoices, invoiceSearch, invoiceFilter]
   );
   const intelligencePulse = useMemo(
     () => Intelligence.computePulse(workspaceInvoices),
@@ -4095,6 +4117,23 @@ export default function App() {
         setProfileFirst("");
         setProfileLast("");
         setProfileCompany("");
+        cacheStateRef.current = { invoices: [], mailAccounts: {}, companyName: "", phone: "", phoneVerified: false, phoneInboxNumber: "" };
+        setInvoiceSearch("");
+        setInvoiceFilter("all");
+        setPendingChanges(0);
+        setDeviceSyncPhase("ready");
+        setPhoneCode("");
+        setPhoneStatus("");
+        setActionInvoice(null);
+        setForwardingAddress("");
+        setSyncMessage("");
+        setSettingsVisible(false);
+        setInvoiceVisible(false);
+        setProfileVisible(false);
+        setSourceHubVisible(false);
+        setPrivacyVisible(false);
+        setMailConnectVisible(false);
+        setReportVisible(false);
       }
       setError("");
       setUser(authUser || null);
@@ -4165,13 +4204,11 @@ export default function App() {
   }, [statusPulse]);
 
   useEffect(() => {
-    const unsubscribe = NetInfo.addEventListener((state) => {
-      setIsOnline(state.isConnected !== false && state.isInternetReachable !== false);
-    });
-    NetInfo.fetch().then((state) => {
-      setIsOnline(state.isConnected !== false && state.isInternetReachable !== false);
-    });
-    return () => unsubscribe();
+    let mounted = true;
+    const update = (state) => { if (mounted) setIsOnline(state.isConnected !== false && state.isInternetReachable !== false); };
+    const unsubscribe = NetInfo.addEventListener(update);
+    NetInfo.fetch().then(update).catch(() => {});
+    return () => { mounted = false; unsubscribe(); };
   }, []);
 
   useEffect(() => {
@@ -4243,9 +4280,16 @@ export default function App() {
   useEffect(() => {
     if (!user?.uid) return undefined;
     const ref = collection(firestore, "users", user.uid, "mail_accounts");
+    let active = true;
+    let receivedSnapshot = false;
+    void loadOfflineCache(user.uid).then((cache) => {
+      if (active && !receivedSnapshot && auth.currentUser?.uid === user.uid && cache?.mailAccounts) setMailAccounts(cache.mailAccounts);
+    });
     const unsubscribe = onSnapshot(
       ref,
       (snapshot) => {
+        if (!active || auth.currentUser?.uid !== user.uid) return;
+        receivedSnapshot = true;
         const next = {};
         snapshot.forEach((docSnap) => {
           next[docSnap.id] = {
@@ -4268,35 +4312,45 @@ export default function App() {
       },
       () => {
         void loadOfflineCache(user.uid).then((cache) => {
-          if (auth.currentUser?.uid === user.uid && cache?.mailAccounts) setMailAccounts(cache.mailAccounts);
+          if (active && auth.currentUser?.uid === user.uid && cache?.mailAccounts) setMailAccounts(cache.mailAccounts);
         });
       }
     );
-    return () => unsubscribe();
+    return () => { active = false; unsubscribe(); };
   }, [user?.uid]);
 
   useEffect(() => {
     if (!user?.uid) return undefined;
     let active = true;
     let receivedSnapshot = false;
-    void loadOfflineCache(user.uid).then((cache) => {
+    let snapshotVersion = 0;
+    void loadOfflineCache(user.uid).then(async (cache) => {
       if (!active || receivedSnapshot || auth.currentUser?.uid !== user.uid) return;
-      if (Array.isArray(cache?.invoices)) {
-        setInvoices(cache.invoices);
+      const queue = await getOfflineQueue(user.uid);
+      if (!active || receivedSnapshot || auth.currentUser?.uid !== user.uid) return;
+      if (Array.isArray(cache?.invoices) || queue.length) {
+        setInvoices(OfflineQueue.projectInvoices(cache?.invoices || [], queue)
+          .map((invoice) => normalizeInvoiceDoc({ id: invoice.id, data: () => invoice })));
         setInvoicesReady(true);
       }
-    });
+    }).catch(() => { if (active) setDeviceSyncPhase("error"); });
     const invRef = collection(firestore, "users", user.uid, "invoices");
     const invQuery = query(invRef);
     const unsubscribe = onSnapshot(
       invQuery,
-      (snapshot) => {
+      async (snapshot) => {
         if (!active || auth.currentUser?.uid !== user.uid) return;
         receivedSnapshot = true;
-        const next = snapshot.docs
+        const version = ++snapshotVersion;
+        let queue;
+        try { queue = await getOfflineQueue(user.uid); }
+        catch (_) { if (active) { setDeviceSyncPhase("error"); setInvoicesReady(true); } return; }
+        if (!active || version !== snapshotVersion || auth.currentUser?.uid !== user.uid) return;
+        const next = OfflineQueue.projectInvoices(snapshot.docs
           .map(normalizeInvoiceDoc)
           .filter(invoiceLooksLikeSubscription)
-          .filter(isMeaningfulInvoiceData);
+          .filter(isMeaningfulInvoiceData), queue)
+          .map((invoice) => normalizeInvoiceDoc({ id: invoice.id, data: () => invoice }));
         next.sort((a, b) => {
           const aDate = a.issueDate || a.dueDate || null;
           const bDate = b.issueDate || b.dueDate || null;
@@ -4319,11 +4373,14 @@ export default function App() {
         });
       },
       () => {
-        void loadOfflineCache(user.uid).then((cache) => {
+        void loadOfflineCache(user.uid).then(async (cache) => {
           if (!active || auth.currentUser?.uid !== user.uid) return;
-          if (Array.isArray(cache?.invoices)) setInvoices(cache.invoices);
+          const queue = await getOfflineQueue(user.uid);
+          if (!active || auth.currentUser?.uid !== user.uid) return;
+          setInvoices(OfflineQueue.projectInvoices(cache?.invoices || [], queue)
+            .map((invoice) => normalizeInvoiceDoc({ id: invoice.id, data: () => invoice })));
           setInvoicesReady(true);
-        });
+        }).catch(() => { if (active) { setDeviceSyncPhase("error"); setInvoicesReady(true); } });
       }
     );
     return () => { active = false; unsubscribe(); };
@@ -4333,17 +4390,45 @@ export default function App() {
   syncActiveRef.current = { uid: user?.uid, online: isOnline };
   const drainOfflineQueue = useCallback(async (uid) => {
     const active = () => syncActiveRef.current.uid === uid && syncActiveRef.current.online;
-    let remaining;
-    do { remaining = await offlineQueueEngine.flush(uid, active); } while (remaining && active());
-    return remaining;
+    try {
+      const queue = await getOfflineQueue(uid);
+      if (active()) setDeviceSyncPhase(queue.length ? "syncing" : "ready");
+      let remaining;
+      do { remaining = await offlineQueueEngine.flush(uid, active); } while (remaining && active());
+      if (syncActiveRef.current.uid === uid) setDeviceSyncPhase("ready");
+      return remaining;
+    } catch (err) {
+      if (syncActiveRef.current.uid === uid) setDeviceSyncPhase(String(err.code || "").endsWith("aborted") ? "conflict" : "error");
+      throw err;
+    }
   }, []);
+  useEffect(() => {
+    if (!user?.uid) return undefined;
+    let active = true;
+    const unsubscribe = offlineQueueEngine.subscribe((uid, count) => {
+      if (active && uid === user.uid && auth.currentUser?.uid === uid) setPendingChanges(count);
+    });
+    void getOfflineQueue(user.uid).then((queue) => { if (active) setPendingChanges(queue.length); })
+      .catch(() => { if (active) setDeviceSyncPhase("error"); });
+    return () => { active = false; unsubscribe(); };
+  }, [user?.uid]);
   useEffect(() => {
     if (!user?.uid || !isOnline) return;
     const uid = user.uid;
-    void drainOfflineQueue(uid)
-      .then((remaining) => { if (!remaining && syncActiveRef.current.uid === uid) setSyncMessage(t("offline_synced")); })
-      .catch(() => { if (syncActiveRef.current.uid === uid) setSyncMessage(t("offline_notice")); });
-  }, [drainOfflineQueue, isOnline, t, user?.uid]);
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (!cancelled && syncActiveRef.current.uid === uid && syncActiveRef.current.online) return drainOfflineQueue(uid);
+    })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [drainOfflineQueue, isOnline, user?.uid]);
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      const current = syncActiveRef.current;
+      if (state === "active" && current.uid && current.online) void drainOfflineQueue(current.uid).catch(() => {});
+    });
+    return () => subscription.remove();
+  }, [drainOfflineQueue]);
 
   const showSplash = !authReady || !splashDone;
   const showLogin = !user;
@@ -4414,7 +4499,7 @@ export default function App() {
   }
 
   async function handleSaveInvoice() {
-    if (!user) return;
+    if (!user || savingInvoice) return;
     setInvoiceError("");
     setInvoiceMessage("");
     if (!invoiceCompany.trim()) {
@@ -4443,25 +4528,30 @@ export default function App() {
       spaceId: planWorkspaceSpace,
     };
     if (!isOnline) {
-      const localId = `local_${OfflineQueue.newId()}`;
-      const localInvoice = {
-        id: localId,
-        ...invoicePayload,
-        createdAt: new Date(),
-      };
-      const nextInvoices = [localInvoice, ...invoices];
-      setInvoices(nextInvoices);
-      await offlineQueueEngine.edit(user.uid, (queue) => [
-        ...queue,
-        { type: "addInvoice", localId, data: serializeForCache(invoicePayload) },
-      ]);
-      await saveOfflineCache(user.uid, {
-        invoices: nextInvoices,
-        mailAccounts,
-        profile: { companyName, phone, phoneVerified, phoneInboxNumber },
-      });
-      setInvoiceMessage(t("offline_saved"));
-      closeInvoiceModal();
+      try {
+        setSavingInvoice(true);
+        const localId = `local_${OfflineQueue.newId()}`;
+        const localInvoice = {
+          id: localId,
+          ...invoicePayload,
+          createdAt: new Date(),
+        };
+        const nextInvoices = [localInvoice, ...invoices];
+        await offlineQueueEngine.edit(user.uid, (queue) => [
+          ...queue,
+          { type: "addInvoice", localId, data: serializeForCache(invoicePayload) },
+        ]);
+        if (auth.currentUser?.uid !== user.uid) return;
+        setInvoices(nextInvoices);
+        await saveOfflineCache(user.uid, {
+          invoices: nextInvoices,
+          mailAccounts,
+          profile: { companyName, phone, phoneVerified, phoneInboxNumber },
+        });
+        setInvoiceMessage(t("offline_saved"));
+        closeInvoiceModal();
+      } catch (_) { setInvoiceError(t("sync_storage_error")); }
+      finally { setSavingInvoice(false); }
       return;
     }
     try {
@@ -4482,32 +4572,35 @@ export default function App() {
 
   async function deleteInvoiceById(invoiceId) {
     if (!user?.uid || !invoiceId) return false;
-    const queued = await getOfflineQueue(user.uid);
-    if (auth.currentUser?.uid !== user.uid) return false;
-    if (!isOnline || queued.some(item => (item.id || item.localId) === invoiceId)) {
-      const nextInvoices = invoices.filter((invoice) => invoice.id !== invoiceId);
-      setInvoices(nextInvoices);
-      await offlineQueueEngine.edit(user.uid, (queue) => {
-        const pending = queue.some((item) => !item.dispatched && item.type === "addInvoice" && item.localId === invoiceId);
-        const remaining = queue.filter((item) => !(!item.dispatched && item.type === "addInvoice" && item.localId === invoiceId));
-        if (!pending) remaining.push({ type: "deleteInvoice", id: invoiceId });
-        return remaining;
-      });
-      if (isOnline) void drainOfflineQueue(user.uid).catch(() => setSyncMessage(t("offline_notice")));
-      await saveOfflineCache(user.uid, {
-        invoices: nextInvoices,
-        mailAccounts,
-        profile: { companyName, phone, phoneVerified, phoneInboxNumber },
-      });
-      setSyncMessage(t("offline_saved"));
-      return true;
-    }
     try {
-      await deleteDoc(doc(firestore, "users", user.uid, "invoices", invoiceId));
-      return true;
-    } catch (_) {
-      return false;
-    }
+      const queued = await getOfflineQueue(user.uid);
+      if (auth.currentUser?.uid !== user.uid) return false;
+      if (!isOnline || queued.some(item => (item.id || item.localId) === invoiceId)) {
+        const nextInvoices = invoices.filter((invoice) => invoice.id !== invoiceId);
+        await offlineQueueEngine.edit(user.uid, (queue) => {
+          const pending = queue.some((item) => !item.dispatched && item.type === "addInvoice" && item.localId === invoiceId);
+          const remaining = queue.filter((item) => !(!item.dispatched && item.type === "addInvoice" && item.localId === invoiceId));
+          if (!pending) remaining.push({ type: "deleteInvoice", id: invoiceId });
+          return remaining;
+        });
+        if (auth.currentUser?.uid !== user.uid) return false;
+        setInvoices(nextInvoices);
+        if (isOnline) void drainOfflineQueue(user.uid).catch(() => {});
+        await saveOfflineCache(user.uid, {
+          invoices: nextInvoices,
+          mailAccounts,
+          profile: { companyName, phone, phoneVerified, phoneInboxNumber },
+        });
+        setSyncMessage(t("offline_saved"));
+        return true;
+      }
+      try {
+        await deleteDoc(doc(firestore, "users", user.uid, "invoices", invoiceId));
+        return true;
+      } catch (_) {
+        return false;
+      }
+    } catch (_) { setSyncMessage(t("sync_storage_error")); return false; }
   }
 
   function handleDeleteInvoice(invoice) {
@@ -4529,32 +4622,36 @@ export default function App() {
 
   async function patchInvoiceFromAction(invoice, patch) {
     if (!user?.uid || !invoice?.id) return false;
-    const queued = await getOfflineQueue(user.uid);
-    if (auth.currentUser?.uid !== user.uid) return false;
-    if (!isOnline || queued.some(item => (item.id || item.localId) === invoice.id)) {
-      const next = invoices.map((item) => item.id === invoice.id ? { ...item, ...patch } : item);
-      setInvoices(next);
-      await offlineQueueEngine.edit(user.uid, (queue) => {
-        const pending = queue.find((item) => !item.dispatched && item.type === "addInvoice" && item.localId === invoice.id);
-        if (pending) pending.data = { ...pending.data, ...serializeForCache(patch) };
-        else queue.push({ type: "updateInvoice", id: invoice.id, data: serializeForCache(patch), baseUpdatedAt: serializeForCache(invoice.updatedAt) });
-        return queue;
-      });
-      await saveOfflineCache(user.uid, { invoices: next, mailAccounts, profile: { companyName, phone, phoneVerified, phoneInboxNumber } });
-      if (isOnline) void drainOfflineQueue(user.uid).catch(() => setSyncMessage(t("offline_notice")));
+    try {
+      const queued = await getOfflineQueue(user.uid);
+      if (auth.currentUser?.uid !== user.uid) return false;
+      if (!isOnline || queued.some(item => (item.id || item.localId) === invoice.id)) {
+        const next = invoices.map((item) => item.id === invoice.id ? { ...item, ...patch } : item);
+        await offlineQueueEngine.edit(user.uid, (queue) => {
+          const pending = queue.find((item) => !item.dispatched && item.type === "addInvoice" && item.localId === invoice.id);
+          if (pending) pending.data = { ...pending.data, ...serializeForCache(patch) };
+          else queue.push({ type: "updateInvoice", id: invoice.id, data: serializeForCache(patch), baseUpdatedAt: serializeForCache(invoice.updatedAt) });
+          return queue;
+        });
+        if (auth.currentUser?.uid !== user.uid) return false;
+        setInvoices(next);
+        await saveOfflineCache(user.uid, { invoices: next, mailAccounts, profile: { companyName, phone, phoneVerified, phoneInboxNumber } });
+        if (isOnline) void drainOfflineQueue(user.uid).catch(() => {});
+        return true;
+      }
+      await updateDoc(doc(firestore, "users", user.uid, "invoices", invoice.id), { ...patch, updatedAt: serverTimestamp() });
       return true;
-    }
-    await updateDoc(doc(firestore, "users", user.uid, "invoices", invoice.id), { ...patch, updatedAt: serverTimestamp() });
-    return true;
+    } catch (_) { setSyncMessage(t("invoice_save_error")); return false; }
   }
 
   async function handleActionPaid() {
     if (!actionInvoice) return;
-    await patchInvoiceFromAction(actionInvoice, {
+    const saved = await patchInvoiceFromAction(actionInvoice, {
       status: "paid",
       paymentSource: "manual_confirmation",
       paidAt: new Date().toISOString(),
     });
+    if (!saved) return;
     setSyncMessage(t("action_paid_success"));
     setActionInvoice(null);
   }
@@ -4572,25 +4669,27 @@ export default function App() {
 
   async function handleSaveReminder() {
     if (!actionInvoice || !user?.uid || !isOnline) return;
-    const normalized = String(reminderInput || "").trim().replace(" ", "T");
-    const remindAt = new Date(normalized);
-    if (Number.isNaN(remindAt.getTime()) || remindAt.getTime() <= Date.now()) {
-      setSyncMessage(t("reminder_placeholder"));
-      return;
-    }
-    await addDoc(collection(firestore, "users", user.uid, "reminders"), {
-      invoiceId: actionInvoice.id,
-      company: actionInvoice.company || "",
-      amount: Number(actionInvoice.amount) || 0,
-      currency: actionInvoice.currency || "RON",
-      remindAt,
-      status: "scheduled",
-      createdAt: serverTimestamp(),
-    });
-    await patchInvoiceFromAction(actionInvoice, { reminderAt: remindAt });
-    setSyncMessage(t("reminder_saved"));
-    setReminderInput("");
-    setActionInvoice(null);
+    try {
+      const normalized = String(reminderInput || "").trim().replace(" ", "T");
+      const remindAt = new Date(normalized);
+      if (Number.isNaN(remindAt.getTime()) || remindAt.getTime() <= Date.now()) {
+        setSyncMessage(t("reminder_placeholder"));
+        return;
+      }
+      await addDoc(collection(firestore, "users", user.uid, "reminders"), {
+        invoiceId: actionInvoice.id,
+        company: actionInvoice.company || "",
+        amount: Number(actionInvoice.amount) || 0,
+        currency: actionInvoice.currency || "RON",
+        remindAt,
+        status: "scheduled",
+        createdAt: serverTimestamp(),
+      });
+      if (!await patchInvoiceFromAction(actionInvoice, { reminderAt: remindAt })) return;
+      setSyncMessage(t("reminder_saved"));
+      setReminderInput("");
+      setActionInvoice(null);
+    } catch (_) { setSyncMessage(t("invoice_save_error")); }
   }
 
   async function openSourceHub() {
@@ -5124,7 +5223,7 @@ export default function App() {
   }
 
   function openExternal(url) {
-    Linking.openURL(url).catch(() => {});
+    Linking.openURL(url).catch(() => Alert.alert("DueFlux", t("link_open_error")));
   }
 
   function openSignup() {
@@ -5695,6 +5794,36 @@ export default function App() {
               </View>
             </View>
 
+            <View style={styles.deviceSyncPanel}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.sectionTitle}>{t("sync_device_title")}</Text>
+                <Text accessibilityLiveRegion="polite" style={[styles.mutedText, styles.smallText]}>
+                  {deviceSyncPhase === "syncing" ? t("sync_uploading") : deviceSyncPhase === "conflict" ? t("sync_conflict") :
+                    deviceSyncPhase === "error" ? t("sync_problem") : pendingChanges ?
+                      t("sync_pending").replace("{{count}}", String(pendingChanges)) : t("sync_ready")}
+                </Text>
+              </View>
+              {pendingChanges || deviceSyncPhase === "error" ? (
+                <TouchableOpacity accessibilityRole="button" style={[styles.ghostButton, !isOnline || deviceSyncPhase === "syncing" ? styles.buttonDisabled : null]}
+                  disabled={!isOnline || deviceSyncPhase === "syncing"}
+                  onPress={() => { void drainOfflineQueue(user.uid).catch(() => {}); }}>
+                  <Text style={styles.ghostButtonText}>{t("sync_retry")}</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+            <TextInput style={styles.input} value={invoiceSearch} onChangeText={setInvoiceSearch}
+              placeholder={t("invoice_search_placeholder")} placeholderTextColor={theme.textMuted}
+              accessibilityLabel={t("invoice_search_label")} autoCorrect={false} returnKeyType="search" />
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.invoiceFilters}>
+              {["all", "unpaid", "overdue", "paid"].map((status) => (
+                <TouchableOpacity key={status} accessibilityRole="button" accessibilityState={{ selected: invoiceFilter === status }}
+                  onPress={() => setInvoiceFilter(status)} style={[styles.filterChip, invoiceFilter === status ? styles.filterChipActive : null]}>
+                  <Text style={styles.ghostButtonText}>{status === "all" ? t("filter_all") : invoiceStatusLabel(status)}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
             {needsInvoiceSourceSetup ? (
             <View style={styles.mailSyncPanel}>
               <View style={styles.mailSyncHeader}>
@@ -5800,8 +5929,8 @@ export default function App() {
 
             {!invoicesReady ? (
               <ActivityIndicator color={theme.accent} style={styles.loadingBlock} />
-            ) : workspaceInvoices.length ? (
-              workspaceInvoices.map((invoice) => {
+            ) : visibleInvoices.length ? (
+              visibleInvoices.map((invoice) => {
                 const effectiveStatus = getInvoiceEffectiveStatus(invoice);
                 return (
                   <View key={invoice.id} style={styles.invoiceRow}>
@@ -5854,9 +5983,15 @@ export default function App() {
                 );
               })
             ) : (
-              <Text style={[styles.mutedText, styles.smallText]}>
-                {t("invoices_empty")}
-              </Text>
+              <View style={styles.invoiceEmpty}>
+                <Text style={styles.mutedText}>{invoiceSearch.trim() || invoiceFilter !== "all" ? t("search_empty") : t("invoices_empty")}</Text>
+                {invoiceSearch.trim() || invoiceFilter !== "all" ? (
+                  <TouchableOpacity accessibilityRole="button" style={styles.ghostButton}
+                    onPress={() => { setInvoiceSearch(""); setInvoiceFilter("all"); }}>
+                    <Text style={styles.ghostButtonText}>{t("search_clear")}</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
             )}
           </View>
         </ScrollView>

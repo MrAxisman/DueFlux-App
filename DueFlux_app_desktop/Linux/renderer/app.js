@@ -3403,6 +3403,7 @@ function setOnlineState(isOnline) {
     }
   });
   setOfflineCacheIndicator(!online && !!currentUser);
+  refreshDeviceSyncUi();
   refreshVerificationUi();
 }
 
@@ -3503,7 +3504,10 @@ function applyOfflineCache(authUser) {
   }
   if (Array.isArray(cache.invoices)) {
     invoicesById = new Map();
-    cache.invoices.forEach(function (inv) {
+    let cachedInvoices = cache.invoices;
+    try { cachedInvoices = DueFluxOfflineQueue.projectInvoices(cachedInvoices, getOfflineQueue(authUser.uid)); }
+    catch (_) { deviceSyncPhase = "error"; }
+    cachedInvoices.forEach(function (inv) {
       if (inv && inv.id) invoicesById.set(inv.id, inv);
     });
     invoices = Array.from(invoicesById.values());
@@ -3545,26 +3549,20 @@ function setOfflineQueue(uid, queue) {
   }
 }
 
-function queueOfflineMutation(mutation) {
+async function queueOfflineMutation(mutation) {
   if (!currentUser || !currentUser.uid || !mutation) return;
-  const queue = getOfflineQueue(currentUser.uid);
-  queue.push(
-    Object.assign({}, mutation, {
-      operationId: DueFluxOfflineQueue.newId(),
-      queuedAt: new Date().toISOString(),
-    })
-  );
-  setOfflineQueue(currentUser.uid, queue);
+  await offlineQueueEngine.edit(currentUser.uid, function (queue) {
+    return queue.concat(Object.assign({}, mutation, { queuedAt: new Date().toISOString() }));
+  });
   notifyUser(t("offline_queue_pending"), "info");
   if (isOnlineNow()) void flushOfflineQueue();
 }
 
-function removeQueuedLocalAdd(uid, localId) {
+async function removeQueuedLocalAdd(uid, localId) {
   if (!uid || !localId) return;
-  const queue = getOfflineQueue(uid).filter(function (item) {
-    return !(item && !item.dispatched && item.type === "addInvoice" && item.localId === localId);
+  await offlineQueueEngine.edit(uid, function (queue) {
+    return queue.filter(function (item) { return item.dispatched || (item.id || item.localId) !== localId; });
   });
-  setOfflineQueue(uid, queue);
 }
 
 const offlineQueueEngine = DueFluxOfflineQueue.create({
@@ -3575,6 +3573,36 @@ const offlineQueueEngine = DueFluxOfflineQueue.create({
     await callFunctionWithAuth("applyOfflineMutation", { mutation: mutation });
   },
 });
+
+let deviceSyncPhase = "ready";
+let deviceSyncUid = "";
+let offlineSyncRequest = null;
+let offlineSyncUid = "";
+offlineQueueEngine.subscribe(function (uid) {
+  if (currentUser && currentUser.uid === uid) refreshDeviceSyncUi();
+});
+
+function refreshDeviceSyncUi() {
+  const panel = document.getElementById("device-sync-panel");
+  if (!panel) return;
+  panel.classList.toggle("hidden", !currentUser);
+  if (!currentUser) return;
+  if (deviceSyncUid !== currentUser.uid) { deviceSyncUid = currentUser.uid; deviceSyncPhase = "ready"; }
+  let count = 0;
+  try { count = getOfflineQueue(currentUser.uid).length; }
+  catch (_) { deviceSyncPhase = "error"; }
+  const key = deviceSyncPhase === "syncing" ? "sync_uploading" : deviceSyncPhase === "conflict" ? "sync_conflict" :
+    deviceSyncPhase === "error" ? "sync_problem" : count ? "sync_pending" : "sync_ready";
+  panel.dataset.state = deviceSyncPhase;
+  setText("device-sync-title", t("sync_device_title"));
+  setText("device-sync-status", t(key).replace("{{count}}", String(count)));
+  const retry = document.getElementById("device-sync-retry");
+  if (retry) {
+    retry.textContent = t("sync_retry");
+    retry.hidden = !count && deviceSyncPhase !== "error";
+    retry.disabled = !isOnlineNow() || deviceSyncPhase === "syncing";
+  }
+}
 
 function hasPendingLocalAdd(id) {
   return !!currentUser && getOfflineQueue(currentUser.uid).some(function (item) {
@@ -3587,19 +3615,33 @@ function hasQueuedInvoice(id) {
 }
 
 async function flushOfflineQueue() {
-  if (!currentUser || !auth.currentUser || !isOnlineNow()) return;
+  if (!currentUser || !auth.currentUser || !isOnlineNow()) { refreshDeviceSyncUi(); return; }
   const uid = auth.currentUser.uid;
-  try {
+  if (offlineSyncRequest && offlineSyncUid === uid) return offlineSyncRequest;
+  offlineSyncUid = uid;
+  const task = (async function () { try {
+    deviceSyncUid = uid;
+    deviceSyncPhase = getOfflineQueue(uid).length ? "syncing" : "ready";
+    refreshDeviceSyncUi();
     const active = function () {
       return !!auth.currentUser && auth.currentUser.uid === uid && isOnlineNow();
     };
     let remaining;
     do { remaining = await offlineQueueEngine.flush(uid, active); } while (remaining && active());
-    if (!remaining) setOfflineCacheIndicator(false);
+    if (auth.currentUser && auth.currentUser.uid === uid) {
+      if (!remaining) setOfflineCacheIndicator(false);
+      deviceSyncPhase = "ready";
+    }
   } catch (err) {
     console.error("offline sync", err);
-    notifyUser(t("offline_queue_pending"), "error");
-  }
+    if (auth.currentUser && auth.currentUser.uid === uid) {
+      deviceSyncPhase = String(err.code || "").endsWith("aborted") ? "conflict" : "error";
+      notifyUser(t(deviceSyncPhase === "conflict" ? "sync_conflict" : "sync_problem"), "error");
+    }
+  } finally { refreshDeviceSyncUi(); } })();
+  offlineSyncRequest = task;
+  task.then(function () { if (offlineSyncRequest === task) offlineSyncRequest = null; });
+  return task;
 }
 
 /* ---------- THEME HANDLING ---------- */
@@ -3966,6 +4008,8 @@ function setLanguage(lang, save) {
   refreshVerificationUi();
   // if legal modal is open, refresh text
   refreshLegalModalTextsIfOpen();
+  refreshDeviceSyncUi();
+  if (window.DueFluxDialogs) window.DueFluxDialogs.refresh();
   if (Array.isArray(invoices)) {
     scheduleInvoiceUiRefresh();
   }
@@ -4498,7 +4542,7 @@ function subscribeProfile(authUser) {
 
 function normalizeInvoiceDoc(doc) {
   const data = doc && doc.data ? doc.data() : {};
-  return Object.assign({ id: doc.id }, data);
+  return Object.assign({}, data, { id: doc.id });
 }
 
 function markInvoicesChanged() {
@@ -4513,30 +4557,10 @@ function replaceInvoicesFromSnapshot(snapshot) {
       nextMap.set(doc.id, normalizeInvoiceDoc(doc));
     });
   }
-  invoicesById = nextMap;
+  const projected = DueFluxOfflineQueue.projectInvoices(Array.from(nextMap.values()), getOfflineQueue(auth.currentUser.uid));
+  invoicesById = new Map(projected.map(function (invoice) { return [invoice.id, invoice]; }));
   invoices = Array.from(invoicesById.values());
   markInvoicesChanged();
-}
-
-function applyInvoiceSnapshotChanges(snapshot) {
-  if (!snapshot || typeof snapshot.docChanges !== "function") return false;
-  const changes = snapshot.docChanges();
-  if (!changes.length) return false;
-
-  changes.forEach(function (change) {
-    if (!change || !change.doc) return;
-    const id = change.doc.id;
-    if (!id) return;
-    if (change.type === "removed") {
-      invoicesById.delete(id);
-      return;
-    }
-    invoicesById.set(id, normalizeInvoiceDoc(change.doc));
-  });
-
-  invoices = Array.from(invoicesById.values());
-  markInvoicesChanged();
-  return true;
 }
 
 function scheduleInvoiceUiRefresh() {
@@ -4559,8 +4583,9 @@ function subscribeInvoices(authUser) {
   if (!authUser) return;
   if (invoicesUnsub) invoicesUnsub();
   if (!applyOfflineCache(authUser)) {
-    invoices = [];
-    invoicesById = new Map();
+    try { invoices = DueFluxOfflineQueue.projectInvoices([], getOfflineQueue(authUser.uid)); }
+    catch (_) { invoices = []; deviceSyncPhase = "error"; }
+    invoicesById = new Map(invoices.map(function (invoice) { return [invoice.id, invoice]; }));
     markInvoicesChanged();
     scheduleInvoiceUiRefresh();
   }
@@ -4570,10 +4595,9 @@ function subscribeInvoices(authUser) {
     .collection("invoices");
   invoicesUnsub = ref.onSnapshot(
     function (snapshot) {
-      const changed = applyInvoiceSnapshotChanges(snapshot);
-      if (!changed && invoicesById.size !== snapshot.size) {
-        replaceInvoicesFromSnapshot(snapshot);
-      }
+      if (!auth.currentUser || auth.currentUser.uid !== authUser.uid) return;
+      try { replaceInvoicesFromSnapshot(snapshot); }
+      catch (err) { console.error("pending invoice changes", err); deviceSyncPhase = "error"; refreshDeviceSyncUi(); return; }
       syncDisplayCurrencySelect();
       saveOfflineCache();
       scheduleInvoiceUiRefresh();
@@ -4777,21 +4801,21 @@ function renderAccountList() {
     div.innerHTML =
       '<div class="account-info">' +
       '<div class="account-name">' +
-      acc.name +
+      escapeHtml(acc.name) +
       "</div>" +
       '<div class="account-email">' +
-      acc.email +
+      escapeHtml(acc.email) +
       "</div>" +
       "</div>" +
       '<div class="account-meta">' +
       '<span class="plan-tag">' +
-      planLabel(acc.plan || "basic") +
+      escapeHtml(planLabel(acc.plan || "basic")) +
       "</span>" +
       '<span class="last-used">' +
-      lastText +
+      escapeHtml(lastText) +
       "</span>" +
       '<button class="primary-btn small" data-email="' +
-      acc.email +
+      escapeHtml(acc.email) +
       '">' +
       t("settings_use_account") +
       "</button>" +
@@ -6098,18 +6122,27 @@ function updateInvoiceLocally(id, patch) {
   if (!id) return false;
   const current = invoicesById.get(id);
   if (!current) return false;
-  if (hasPendingLocalAdd(id)) {
-    const queue = getOfflineQueue(currentUser.uid);
-    const pending = queue.find(function (item) { return item.type === "addInvoice" && item.localId === id; });
-    if (pending) pending.data = Object.assign({}, pending.data, serializeForOfflineCache(patch));
-    setOfflineQueue(currentUser.uid, queue);
-  }
   invoicesById.set(id, Object.assign({}, current, patch || {}));
   invoices = Array.from(invoicesById.values());
   markInvoicesChanged();
   scheduleInvoiceUiRefresh();
   saveOfflineCache();
   return true;
+}
+
+async function queueInvoiceUpdate(id, patch) {
+  const uid = auth.currentUser.uid;
+  const invoice = invoicesById.get(id);
+  await offlineQueueEngine.edit(uid, function (queue) {
+    const pending = queue.find(function (item) { return !item.dispatched && item.type === "addInvoice" && item.localId === id; });
+    if (pending) pending.data = Object.assign({}, pending.data, serializeForOfflineCache(patch));
+    else queue.push({ type: "updateInvoice", id: id, data: serializeForOfflineCache(patch),
+      baseUpdatedAt: serializeForOfflineCache(invoice && invoice.updatedAt) });
+    return queue;
+  });
+  if (!auth.currentUser || auth.currentUser.uid !== uid) return;
+  updateInvoiceLocally(id, patch);
+  if (isOnlineNow()) void flushOfflineQueue();
 }
 
 function closeConfirmDialog(confirmed) {
@@ -6222,12 +6255,12 @@ function bindInvoiceTableActions() {
         });
         if (!confirmed) return;
         if (!isOnlineNow() || hasQueuedInvoice(id)) {
-          removeInvoiceLocally(id);
           if (hasPendingLocalAdd(id)) {
-            removeQueuedLocalAdd(auth.currentUser.uid, id);
+            await removeQueuedLocalAdd(auth.currentUser.uid, id);
           } else {
-            queueOfflineMutation({ type: "deleteInvoice", id: id });
+            await queueOfflineMutation({ type: "deleteInvoice", id: id });
           }
+          removeInvoiceLocally(id);
           return;
         }
         await deleteInvoiceById(id);
@@ -6239,14 +6272,7 @@ function bindInvoiceTableActions() {
       const status = btn.getAttribute("data-status");
       if (!status) return;
       if (!isOnlineNow() || hasQueuedInvoice(id)) {
-        updateInvoiceLocally(id, { status: status, updatedAt: new Date().toISOString() });
-        if (!hasPendingLocalAdd(id)) {
-          queueOfflineMutation({
-            type: "updateInvoice",
-            id: id,
-            data: { status: status },
-          });
-        }
+        await queueInvoiceUpdate(id, { status: status });
         return;
       }
       await firestore
@@ -6295,8 +6321,11 @@ function renderInvoiceTable() {
   });
   if (!displayInvoices.length) {
     const tr = document.createElement("tr");
-    tr.innerHTML =
-      '<td colspan="8" class="small muted">' + t("month_empty") + "</td>";
+    const cell = document.createElement("td");
+    cell.colSpan = 8;
+    cell.className = "small muted invoice-empty";
+    cell.textContent = t(invoiceSearchQuery.trim() ? "search_empty" : "month_empty");
+    tr.appendChild(cell);
     tbody.appendChild(tr);
     return;
   }
@@ -6316,12 +6345,12 @@ function renderInvoiceTable() {
     const manualStatusActionsEnabled = autoStatusEnabled === false;
     const statusActionHtml = manualStatusActionsEnabled
       ? '<button class="text-btn" data-id="' +
-        inv.id +
+        escapeHtml(inv.id) +
         '" data-action="status" data-status="paid">' +
         t("table_actions_paid") +
         "</button>" +
         '<button class="text-btn" data-id="' +
-        inv.id +
+        escapeHtml(inv.id) +
         '" data-action="status" data-status="overdue">' +
         t("table_actions_overdue") +
         "</button>"
@@ -6329,22 +6358,22 @@ function renderInvoiceTable() {
 
     tr.innerHTML =
       "<td>" +
-      (inv.company || "-") +
+      escapeHtml(inv.company || "-") +
       "</td>" +
       "<td>" +
-      (inv.category || "-") +
+      escapeHtml(inv.category || "-") +
       "</td>" +
       "<td>" +
-      (inv.number || "-") +
+      escapeHtml(inv.number || "-") +
       "</td>" +
       "<td>" +
-      issueDate +
+      escapeHtml(issueDate) +
       "</td>" +
       "<td>" +
-      dueDate +
+      escapeHtml(dueDate) +
       "</td>" +
       "<td>" +
-      amountText +
+      escapeHtml(amountText) +
       "</td>" +
       '<td><span class="status-badge status-' +
       effectiveStatus +
@@ -6353,13 +6382,13 @@ function renderInvoiceTable() {
       "</span></td>" +
       '<td>' +
       '<button class="df-row-action" data-id="' +
-      inv.id +
+      escapeHtml(inv.id) +
       '" data-action="center">' +
       t("invoice_open") +
       "</button>" +
       statusActionHtml +
       '<button class="text-btn" data-id="' +
-      inv.id +
+      escapeHtml(inv.id) +
       '" data-action="delete">' +
       t("table_actions_delete") +
       "</button>" +
@@ -6579,8 +6608,7 @@ async function updateInvoiceSpace(invoiceId, space) {
   void space;
   const patch = { spaceId: getAccountWorkspaceSpace() };
   if (!isOnlineNow() || hasQueuedInvoice(invoiceId)) {
-    updateInvoiceLocally(invoiceId, patch);
-    if (!hasPendingLocalAdd(invoiceId)) queueOfflineMutation({ type: "updateInvoice", id: invoiceId, data: patch });
+    await queueInvoiceUpdate(invoiceId, patch);
   } else {
     await firestore.collection("users").doc(auth.currentUser.uid).collection("invoices").doc(invoiceId).set(patch, { merge: true });
   }
@@ -6592,8 +6620,7 @@ async function confirmActiveInvoicePaid() {
   if (!invoice || !auth.currentUser) return;
   const patch = { status: "paid", paymentSource: "manual_confirmation", paidAt: new Date().toISOString() };
   if (!isOnlineNow() || hasQueuedInvoice(invoice.id)) {
-    updateInvoiceLocally(invoice.id, patch);
-    if (!hasPendingLocalAdd(invoice.id)) queueOfflineMutation({ type: "updateInvoice", id: invoice.id, data: patch });
+    await queueInvoiceUpdate(invoice.id, patch);
   } else {
     patch.paidAt = firebase.firestore.FieldValue.serverTimestamp();
     await firestore.collection("users").doc(auth.currentUser.uid).collection("invoices").doc(invoice.id).set(patch, { merge: true });
@@ -7005,27 +7032,23 @@ async function deleteAllInvoices() {
   });
   if (!confirmed) return;
 
-  if (!isOnlineNow()) {
+  if (!isOnlineNow() || getOfflineQueue(auth.currentUser.uid).length) {
     const ids = Array.from(invoicesById.keys());
-    const cloudIds = ids.filter(function (id) {
-      return !hasPendingLocalAdd(id);
-    });
-    ids.forEach(function (id) {
-      invoicesById.delete(id);
-    });
+    const uid = auth.currentUser.uid;
+    try {
+      await offlineQueueEngine.edit(uid, function (queue) {
+        const unsentAdds = new Set(queue.filter(function (item) { return !item.dispatched && item.type === "addInvoice"; }).map(function (item) { return item.localId; }));
+        const remaining = queue.filter(function (item) { return !unsentAdds.has(item.id || item.localId); });
+        ids.filter(function (id) { return !unsentAdds.has(id); }).forEach(function (id) {
+          remaining.push({ type: "deleteInvoice", id: id, queuedAt: new Date().toISOString() });
+        });
+        return remaining;
+      });
+    } catch (_) { notifyUser(t("sync_storage_error"), "error"); return; }
+    if (!auth.currentUser || auth.currentUser.uid !== uid) return;
+    invoicesById.clear();
     invoices = [];
     markInvoicesChanged();
-    const queued = getOfflineQueue(auth.currentUser.uid).filter(function (item) {
-      return !(item && !item.dispatched && item.type === "addInvoice");
-    });
-    cloudIds.forEach(function (id) {
-      queued.push({
-        type: "deleteInvoice",
-        id: id,
-        queuedAt: new Date().toISOString(),
-      });
-    });
-    setOfflineQueue(auth.currentUser.uid, queued);
     saveOfflineCache();
     scheduleInvoiceUiRefresh();
     notifyUser(
@@ -7033,6 +7056,7 @@ async function deleteAllInvoices() {
       "success"
     );
     notifyUser(t("offline_queue_pending"), "info");
+    if (isOnlineNow()) void flushOfflineQueue();
     return;
   }
 
@@ -7276,14 +7300,12 @@ async function saveInvoiceFromModal() {
       createdAt: new Date().toISOString(),
       offlinePending: true,
     });
+    try {
+      await queueOfflineMutation({ type: "addInvoice", localId: localId, data: serializeForOfflineCache(invoiceData) });
+    } catch (_) { notifyUser(t("sync_storage_error"), "error"); return; }
     invoicesById.set(localId, localInvoice);
     invoices = Array.from(invoicesById.values());
     markInvoicesChanged();
-    queueOfflineMutation({
-      type: "addInvoice",
-      localId: localId,
-      data: serializeForOfflineCache(invoiceData),
-    });
     saveOfflineCache();
     scheduleInvoiceUiRefresh();
     closeInvoiceModal();
@@ -7301,6 +7323,7 @@ async function saveInvoiceFromModal() {
     closeInvoiceModal();
   } catch (err) {
     console.error("saveInvoice", err);
+    notifyUser(t("invoice_save_error"), "error");
   }
 }
 
@@ -8889,6 +8912,16 @@ window.addEventListener("load", function () {
   refreshExchangeRateStatus();
 
   // connectivity state
+  document.getElementById("device-sync-retry").addEventListener("click", function () { void flushOfflineQueue(); });
+  DueFluxDialogs.init({ closeLabel: function () { return t("modal_close"); }, close: {
+    "settings-backdrop": closeSettings, "modal-backdrop": closeInvoiceModal,
+    "confirm-backdrop": function () { closeConfirmDialog(false); },
+    "df-action-backdrop": closeInvoiceActionCenter, "df-sources-backdrop": closeSourcesHub,
+    "df-vault-backdrop": closePrivacyVault, "reports-backdrop": closeReportsModal,
+    "mail-connect-backdrop": closeMailConnectModal, "profile-backdrop": closeProfileModal,
+    "legal-backdrop": closeLegal, "update-prompt-backdrop": closeUpdatePrompt,
+    "account-modal-backdrop": function () { document.getElementById("account-modal-backdrop").classList.add("hidden"); }
+  } });
   setOnlineState(navigator.onLine);
   window.addEventListener("online", function () {
     setOnlineState(true);
@@ -9159,7 +9192,7 @@ window.addEventListener("load", function () {
   const reminderSave = document.getElementById("df-reminder-save");
   if (actionBackdrop) actionBackdrop.addEventListener("click", function (event) { if (event.target === actionBackdrop) closeInvoiceActionCenter(); });
   if (actionClose) actionClose.addEventListener("click", closeInvoiceActionCenter);
-  if (actionPaid) actionPaid.addEventListener("click", function () { confirmActiveInvoicePaid().catch(function (err) { console.error("confirm paid", err); }); });
+  if (actionPaid) actionPaid.addEventListener("click", function () { confirmActiveInvoicePaid().catch(function (err) { console.error("confirm paid", err); notifyUser(t("invoice_save_error"), "error"); }); });
   if (actionPayment) actionPayment.addEventListener("click", function () { openActiveInvoiceOfficialUrl("payment"); });
   if (actionCancelSubscription) actionCancelSubscription.addEventListener("click", function () { openActiveInvoiceOfficialUrl("cancel"); });
   if (actionReminder) actionReminder.addEventListener("click", function () {
@@ -9172,7 +9205,7 @@ window.addEventListener("load", function () {
     }
     if (editor) editor.classList.toggle("hidden");
   });
-  if (reminderSave) reminderSave.addEventListener("click", function () { saveActiveInvoiceReminder().catch(function (err) { console.error("save reminder", err); }); });
+  if (reminderSave) reminderSave.addEventListener("click", function () { saveActiveInvoiceReminder().catch(function (err) { console.error("save reminder", err); notifyUser(t("invoice_save_error"), "error"); }); });
 
   const sourceHubOpen = document.getElementById("df-source-hub-open");
   const sourceHubBackdrop = document.getElementById("df-sources-backdrop");
@@ -9356,14 +9389,6 @@ window.addEventListener("load", function () {
       if (e.target === settingsBackdrop) closeSettings();
     });
   }
-  document.addEventListener("keydown", function (e) {
-    if (e.key !== "Escape") return;
-    const bd = document.getElementById("settings-backdrop");
-    if (bd && !bd.classList.contains("hidden")) closeSettings();
-    closeInvoiceActionCenter();
-    closeSourcesHub();
-    closePrivacyVault();
-  });
   const phoneSave = document.getElementById("settings-phone-save");
   const phoneSendCode = document.getElementById("settings-phone-send-code");
   const phoneVerify = document.getElementById("settings-phone-verify");

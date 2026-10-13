@@ -6,7 +6,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0, maximum-scale=1.0"
+      content="width=device-width, initial-scale=1.0"
     />
     <meta
       http-equiv="Content-Security-Policy"
@@ -382,6 +382,14 @@
               Offline cache
             </span>
           </div>
+
+          <section id="device-sync-panel" class="device-sync-panel hidden" aria-labelledby="device-sync-title">
+            <div>
+              <h4 id="device-sync-title">Device sync</h4>
+              <p id="device-sync-status" role="status" aria-live="polite"></p>
+            </div>
+            <button id="device-sync-retry" class="ghost-btn small" type="button" hidden>Retry sync</button>
+          </section>
 
           <div id="invoice-setup-panel" class="setup-panel">
             <div class="setup-panel-head">
@@ -1331,6 +1339,7 @@
     <script src="feature-locales.js"></script>
     <script src="product-intelligence.js"></script>
     <script src="offline-queue.js"></script>
+    <script src="dialog-accessibility.js"></script>
     <script src="app.js"></script>
   </body>
 </html>
