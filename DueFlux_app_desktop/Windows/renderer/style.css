@@ -5566,3 +5566,31 @@ html[data-theme="light"] #app-screen .app-main > .app-hero { background: linear-
 html[dir="rtl"] input[type="email"], html[dir="rtl"] input[type="tel"], html[dir="rtl"] input[type="number"] { direction: ltr; text-align: start; }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+
+/* Device state stays separate from email/phone provider configuration. */
+.device-sync-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 12px 0 20px;
+  padding: 14px 18px;
+  border: 1px solid var(--border-subtle);
+  border-inline-start: 3px solid var(--accent);
+  border-radius: 14px;
+  background: linear-gradient(110deg, var(--accent-soft), transparent 70%);
+}
+.device-sync-panel h4 { margin: 0 0 4px; font-size: 13px; }
+.device-sync-panel p { margin: 0; font-size: 12px; line-height: 1.6; color: var(--text-muted); }
+.device-sync-panel[data-state="error"], .device-sync-panel[data-state="conflict"] { border-inline-start-color: var(--danger); }
+#device-sync-panel #device-sync-retry[hidden] { display: none !important; }
+html[data-theme="light"] .df-count-badge,
+html[data-theme="light"] .df-timeline-date { color: #1269ae; border-color: rgba(18, 105, 174, .25); }
+.invoice-empty { padding: 28px 18px !important; text-align: center; }
+:where(button, a, input, select, textarea, [tabindex]):focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.modal[role="dialog"], .settings-panel[role="dialog"] { max-height: calc(100dvh - 40px); overflow-y: auto; overscroll-behavior: contain; }
+@media (max-width: 600px) {
+  .device-sync-panel { align-items: stretch; flex-direction: column; }
+  .device-sync-panel button { min-height: 44px; }
+  .modal[role="dialog"], .settings-panel[role="dialog"] { max-height: calc(100dvh - 24px); }
+}

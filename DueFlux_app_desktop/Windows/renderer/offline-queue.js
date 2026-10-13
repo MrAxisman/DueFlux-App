@@ -11,13 +11,14 @@
   function create({ read, write, apply }) {
     const locks = new Map();
     const running = new Map();
+    const listeners = new Set();
     function edit(uid, transform) {
       const previous = locks.get(uid) || Promise.resolve();
       const next = previous.catch(function () {}).then(async function () {
         const stored = read(uid);
         const items = stored && typeof stored.then === "function" ? await stored : stored;
         const queue = items.map(function (item) {
-          return Object.assign({}, item, { operationId: item.operationId || newId() });
+          return Object.assign({}, item, { data: item.data && Object.assign({}, item.data), operationId: item.operationId || newId() });
         });
         const result = transform(queue).map(function (item) {
           return Object.assign({}, item, { operationId: item.operationId || newId() });
@@ -33,9 +34,14 @@
           previousForInvoice.set(invoiceId, item);
         });
         await write(uid, result);
+        listeners.forEach(function (listener) {
+          try { listener(uid, result.length); } catch (_) { /* UI observers cannot fail a durable write. */ }
+        });
         return result;
       });
       locks.set(uid, next);
+      const unlock = function () { if (locks.get(uid) === next) locks.delete(uid); };
+      next.then(unlock, unlock);
       return next;
     }
     function flush(uid, active) {
@@ -66,7 +72,34 @@
       promise.then(function () { running.delete(uid); }, function () { running.delete(uid); });
       return promise;
     }
-    return { edit, flush };
+    function subscribe(listener) {
+      listeners.add(listener);
+      return function () { listeners.delete(listener); };
+    }
+    return { edit, flush, subscribe };
   }
-  return { create, newId };
+  function projectInvoices(invoices, queue) {
+    const records = new Map((invoices || []).map(function (invoice) { return [invoice.id, Object.assign({}, invoice)]; }));
+    // Cloud snapshots are a base, not a replacement for changes still on this device.
+    (queue || []).forEach(function (mutation) {
+      const id = mutation.id || mutation.localId;
+      if (!id) return;
+      if (mutation.type === "deleteInvoice") records.delete(id);
+      else if (mutation.type === "addInvoice" || mutation.type === "updateInvoice") {
+        const current = records.get(id);
+        if (current || mutation.type === "addInvoice") {
+          records.set(id, Object.assign({}, current, mutation.data, { id: id, offlinePending: true }));
+        }
+      }
+    });
+    return Array.from(records.values());
+  }
+  function matchesInvoice(invoice, term) {
+    const normalize = function (value) {
+      return String(value == null ? "" : value).normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    };
+    const haystack = normalize([invoice.company, invoice.category, invoice.number, invoice.amount, invoice.currency].join(" "));
+    return normalize(term).trim().split(/\s+/).every(function (token) { return haystack.includes(token); });
+  }
+  return { create, newId, projectInvoices, matchesInvoice };
 });

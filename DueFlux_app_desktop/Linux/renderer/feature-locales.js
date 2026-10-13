@@ -1,4 +1,10 @@
-(function(root, factory) { const value = factory(); if (typeof module === "object" && module.exports) module.exports = value; root.DueFluxFeatureLocales = value; })(typeof globalThis !== "undefined" ? globalThis : this, function() { return {
+// Generated UI translations. Regenerate with scripts/generate-feature-locales.mjs.
+(function (root, factory) {
+  const value = factory();
+  if (typeof module === "object" && module.exports) module.exports = value;
+  else root.DueFluxFeatureLocales = value;
+})(typeof globalThis !== "undefined" ? globalThis : this, function () {
+  return {
   "en": {
     "login_title": "DueFlux",
     "login_subtitle": "Unified invoices for home & business.",
@@ -529,7 +535,20 @@
     "cadence_quarterly": "Quarterly",
     "cadence_yearly": "Yearly",
     "cadence_unknown": "Unknown",
-    "reports_failed": "Report export failed. Please try again."
+    "reports_failed": "Report export failed. Please try again.",
+    "sync_device_title": "Device sync",
+    "sync_ready": "Local changes are synced.",
+    "sync_pending": "{{count}} changes saved on this device.",
+    "sync_uploading": "Syncing local changes…",
+    "sync_problem": "Sync failed. Your local changes are kept. Try again.",
+    "sync_conflict": "Cloud data changed. Your local changes are kept; review the invoice before retrying.",
+    "sync_retry": "Retry sync",
+    "sync_storage_error": "Could not save on this device. Nothing was changed. Check available storage and try again.",
+    "search_empty": "No invoices match your search or filter.",
+    "search_clear": "Clear search and filters",
+    "filter_all": "All statuses",
+    "modal_close": "Close",
+    "link_open_error": "Could not open this link. Try again."
   },
   "ro": {
     "login_title": "DueFlux",
@@ -1063,7 +1082,20 @@
     "cadence_quarterly": "Trimestrial",
     "cadence_yearly": "Anual",
     "cadence_unknown": "Necunoscut",
-    "reports_failed": "Exportul raportului a eșuat. Încearcă din nou."
+    "reports_failed": "Exportul raportului a eșuat. Încearcă din nou.",
+    "sync_device_title": "Sincronizarea dispozitivului",
+    "sync_ready": "Modificările locale sunt sincronizate.",
+    "sync_pending": "{{count}} modificări salvate pe acest dispozitiv.",
+    "sync_uploading": "Se sincronizează modificările locale…",
+    "sync_problem": "Sincronizarea a eșuat. Modificările locale sunt păstrate. Încearcă din nou.",
+    "sync_conflict": "Datele din cloud s-au schimbat. Modificările locale sunt păstrate; verifică factura înainte să reîncerci.",
+    "sync_retry": "Reîncearcă sincronizarea",
+    "sync_storage_error": "Nu s-a putut salva pe acest dispozitiv. Nu s-a modificat nimic. Verifică spațiul disponibil și reîncearcă.",
+    "search_empty": "Nicio factură nu corespunde căutării sau filtrului.",
+    "search_clear": "Resetează căutarea și filtrele",
+    "filter_all": "Toate stările",
+    "modal_close": "Închide",
+    "link_open_error": "Linkul nu a putut fi deschis. Încearcă din nou."
   },
   "zh": {
     "login_title": "适当通量",
@@ -1595,7 +1627,20 @@
     "cadence_quarterly": "每季度",
     "cadence_yearly": "每年",
     "cadence_unknown": "未知",
-    "reports_failed": "报告导出失败。请重试。"
+    "reports_failed": "报告导出失败。请重试。",
+    "sync_device_title": "设备同步",
+    "sync_ready": "本地更改已同步。",
+    "sync_pending": "{{count}} 项更改已保存在此设备上。",
+    "sync_uploading": "正在同步本地更改…",
+    "sync_problem": "同步失败。本地更改已保留，请重试。",
+    "sync_conflict": "云端数据已更改。本地更改已保留，请检查账单后再重试。",
+    "sync_retry": "重试同步",
+    "sync_storage_error": "无法保存到此设备。未进行任何更改，请检查可用存储空间后重试。",
+    "search_empty": "没有符合搜索或筛选条件的账单。",
+    "search_clear": "清除搜索和筛选",
+    "filter_all": "所有状态",
+    "modal_close": "关闭",
+    "link_open_error": "无法打开此链接，请重试。"
   },
   "ja": {
     "login_title": "デューフラックス",
@@ -2127,7 +2172,20 @@
     "cadence_quarterly": "四半期ごと",
     "cadence_yearly": "毎年",
     "cadence_unknown": "不明",
-    "reports_failed": "レポートをエクスポートできませんでした。もう一度お試しください。"
+    "reports_failed": "レポートをエクスポートできませんでした。もう一度お試しください。",
+    "sync_device_title": "デバイスの同期",
+    "sync_ready": "ローカルの変更は同期済みです。",
+    "sync_pending": "{{count}} 件の変更がこのデバイスに保存されています。",
+    "sync_uploading": "ローカルの変更を同期しています…",
+    "sync_problem": "同期に失敗しました。ローカルの変更は保持されています。もう一度お試しください。",
+    "sync_conflict": "クラウドのデータが変更されました。ローカルの変更は保持されています。再試行する前に請求書を確認してください。",
+    "sync_retry": "同期を再試行",
+    "sync_storage_error": "このデバイスに保存できませんでした。変更は行われていません。空き容量を確認して再試行してください。",
+    "search_empty": "検索またはフィルターに一致する請求書がありません。",
+    "search_clear": "検索とフィルターをリセット",
+    "filter_all": "すべての状態",
+    "modal_close": "閉じる",
+    "link_open_error": "このリンクを開けませんでした。もう一度お試しください。"
   },
   "ru": {
     "login_title": "Дуэфлюкс",
@@ -2659,7 +2717,20 @@
     "cadence_quarterly": "Ежеквартально",
     "cadence_yearly": "Ежегодно",
     "cadence_unknown": "Неизвестно",
-    "reports_failed": "Не удалось экспортировать отчёт. Повторите попытку."
+    "reports_failed": "Не удалось экспортировать отчёт. Повторите попытку.",
+    "sync_device_title": "Синхронизация устройства",
+    "sync_ready": "Локальные изменения синхронизированы.",
+    "sync_pending": "{{count}} изменений сохранено на этом устройстве.",
+    "sync_uploading": "Синхронизация локальных изменений…",
+    "sync_problem": "Сбой синхронизации. Локальные изменения сохранены. Повторите попытку.",
+    "sync_conflict": "Облачные данные изменились. Локальные изменения сохранены; проверьте счёт перед повторной попыткой.",
+    "sync_retry": "Повторить синхронизацию",
+    "sync_storage_error": "Не удалось сохранить на устройстве. Ничего не изменено. Проверьте свободное место и повторите попытку.",
+    "search_empty": "Нет счетов, соответствующих поиску или фильтру.",
+    "search_clear": "Сбросить поиск и фильтры",
+    "filter_all": "Все статусы",
+    "modal_close": "Закрыть",
+    "link_open_error": "Не удалось открыть ссылку. Повторите попытку."
   },
   "es": {
     "login_title": "DueFlux",
@@ -3191,7 +3262,20 @@
     "cadence_quarterly": "Trimestral",
     "cadence_yearly": "Anual",
     "cadence_unknown": "Desconocido",
-    "reports_failed": "No se pudo exportar el informe. Inténtalo de nuevo."
+    "reports_failed": "No se pudo exportar el informe. Inténtalo de nuevo.",
+    "sync_device_title": "Sincronización del dispositivo",
+    "sync_ready": "Los cambios locales están sincronizados.",
+    "sync_pending": "{{count}} cambios guardados en este dispositivo.",
+    "sync_uploading": "Sincronizando cambios locales…",
+    "sync_problem": "Error de sincronización. Se conservan los cambios locales. Inténtalo de nuevo.",
+    "sync_conflict": "Los datos en la nube han cambiado. Se conservan los cambios locales; revisa la factura antes de reintentar.",
+    "sync_retry": "Reintentar sincronización",
+    "sync_storage_error": "No se pudo guardar en este dispositivo. No se ha cambiado nada. Comprueba el espacio disponible y reintenta.",
+    "search_empty": "Ninguna factura coincide con la búsqueda o el filtro.",
+    "search_clear": "Restablecer búsqueda y filtros",
+    "filter_all": "Todos los estados",
+    "modal_close": "Cerrar",
+    "link_open_error": "No se pudo abrir este enlace. Inténtalo de nuevo."
   },
   "ar": {
     "login_title": "دويفلوكس",
@@ -3723,7 +3807,20 @@
     "cadence_quarterly": "ربع سنوي",
     "cadence_yearly": "سنوي",
     "cadence_unknown": "غير معروف",
-    "reports_failed": "تعذر تصدير التقرير. يرجى المحاولة مجددًا."
+    "reports_failed": "تعذر تصدير التقرير. يرجى المحاولة مجددًا.",
+    "sync_device_title": "مزامنة الجهاز",
+    "sync_ready": "تمت مزامنة التغييرات المحلية.",
+    "sync_pending": "تم حفظ {{count}} تغييرات على هذا الجهاز.",
+    "sync_uploading": "جارٍ مزامنة التغييرات المحلية…",
+    "sync_problem": "فشلت المزامنة. تم الاحتفاظ بتغييراتك المحلية. حاول مرة أخرى.",
+    "sync_conflict": "تغيرت بيانات السحابة. تم الاحتفاظ بتغييراتك المحلية؛ راجع الفاتورة قبل المحاولة مجددًا.",
+    "sync_retry": "إعادة محاولة المزامنة",
+    "sync_storage_error": "تعذر الحفظ على هذا الجهاز. لم يتم تغيير أي شيء. تحقق من مساحة التخزين المتاحة وحاول مجددًا.",
+    "search_empty": "لا توجد فواتير تطابق البحث أو عامل التصفية.",
+    "search_clear": "مسح البحث وعوامل التصفية",
+    "filter_all": "جميع الحالات",
+    "modal_close": "إغلاق",
+    "link_open_error": "تعذر فتح هذا الرابط. حاول مرة أخرى."
   },
   "tr": {
     "login_title": "DueFlux",
@@ -4255,7 +4352,20 @@
     "cadence_quarterly": "Üç aylık",
     "cadence_yearly": "Yıllık",
     "cadence_unknown": "Bilinmiyor",
-    "reports_failed": "Rapor dışa aktarılamadı. Tekrar deneyin."
+    "reports_failed": "Rapor dışa aktarılamadı. Tekrar deneyin.",
+    "sync_device_title": "Cihaz senkronizasyonu",
+    "sync_ready": "Yerel değişiklikler senkronize edildi.",
+    "sync_pending": "Bu cihazda {{count}} değişiklik kaydedildi.",
+    "sync_uploading": "Yerel değişiklikler senkronize ediliyor…",
+    "sync_problem": "Senkronizasyon başarısız. Yerel değişiklikler korunuyor. Tekrar deneyin.",
+    "sync_conflict": "Bulut verileri değişti. Yerel değişiklikler korunuyor; tekrar denemeden önce faturayı kontrol edin.",
+    "sync_retry": "Senkronizasyonu tekrar dene",
+    "sync_storage_error": "Bu cihaza kaydedilemedi. Hiçbir şey değiştirilmedi. Kullanılabilir depolamayı kontrol edip tekrar deneyin.",
+    "search_empty": "Aramanıza veya filtrenize uygun fatura yok.",
+    "search_clear": "Aramayı ve filtreleri sıfırla",
+    "filter_all": "Tüm durumlar",
+    "modal_close": "Kapat",
+    "link_open_error": "Bu bağlantı açılamadı. Tekrar deneyin."
   },
   "hu": {
     "login_title": "DueFlux",
@@ -4787,7 +4897,20 @@
     "cadence_quarterly": "Negyedévente",
     "cadence_yearly": "Évente",
     "cadence_unknown": "Ismeretlen",
-    "reports_failed": "A jelentés exportálása sikertelen. Próbálja újra."
+    "reports_failed": "A jelentés exportálása sikertelen. Próbálja újra.",
+    "sync_device_title": "Eszközszinkronizálás",
+    "sync_ready": "A helyi módosítások szinkronizálva.",
+    "sync_pending": "{{count}} módosítás mentve ezen az eszközön.",
+    "sync_uploading": "Helyi módosítások szinkronizálása…",
+    "sync_problem": "A szinkronizálás sikertelen. A helyi módosítások megmaradnak. Próbáld újra.",
+    "sync_conflict": "A felhő adatai megváltoztak. A helyi módosítások megmaradnak; ellenőrizd a számlát az újrapróbálás előtt.",
+    "sync_retry": "Szinkronizálás újra",
+    "sync_storage_error": "Nem sikerült menteni ezen az eszközön. Semmi nem változott. Ellenőrizd a szabad tárhelyet, és próbáld újra.",
+    "search_empty": "Nincs a keresésnek vagy szűrőnek megfelelő számla.",
+    "search_clear": "Keresés és szűrők törlése",
+    "filter_all": "Minden állapot",
+    "modal_close": "Bezárás",
+    "link_open_error": "A hivatkozás nem nyitható meg. Próbáld újra."
   },
   "de": {
     "login_title": "DueFlux",
@@ -5319,7 +5442,20 @@
     "cadence_quarterly": "Vierteljährlich",
     "cadence_yearly": "Jährlich",
     "cadence_unknown": "Unbekannt",
-    "reports_failed": "Der Bericht konnte nicht exportiert werden. Bitte erneut versuchen."
+    "reports_failed": "Der Bericht konnte nicht exportiert werden. Bitte erneut versuchen.",
+    "sync_device_title": "Gerätesynchronisierung",
+    "sync_ready": "Lokale Änderungen sind synchronisiert.",
+    "sync_pending": "{{count}} Änderungen auf diesem Gerät gespeichert.",
+    "sync_uploading": "Lokale Änderungen werden synchronisiert…",
+    "sync_problem": "Synchronisierung fehlgeschlagen. Lokale Änderungen bleiben erhalten. Versuche es erneut.",
+    "sync_conflict": "Cloud-Daten wurden geändert. Lokale Änderungen bleiben erhalten; prüfe die Rechnung vor einem erneuten Versuch.",
+    "sync_retry": "Erneut synchronisieren",
+    "sync_storage_error": "Speichern auf diesem Gerät fehlgeschlagen. Nichts wurde geändert. Prüfe den freien Speicher und versuche es erneut.",
+    "search_empty": "Keine Rechnungen entsprechen deiner Suche oder dem Filter.",
+    "search_clear": "Suche und Filter zurücksetzen",
+    "filter_all": "Alle Status",
+    "modal_close": "Schließen",
+    "link_open_error": "Dieser Link konnte nicht geöffnet werden. Versuche es erneut."
   },
   "fr": {
     "login_title": "FluxDû",
@@ -5851,7 +5987,20 @@
     "cadence_quarterly": "Trimestriel",
     "cadence_yearly": "Annuel",
     "cadence_unknown": "Inconnu",
-    "reports_failed": "Impossible d’exporter le rapport. Réessayez."
+    "reports_failed": "Impossible d’exporter le rapport. Réessayez.",
+    "sync_device_title": "Synchronisation de l’appareil",
+    "sync_ready": "Les modifications locales sont synchronisées.",
+    "sync_pending": "{{count}} modifications enregistrées sur cet appareil.",
+    "sync_uploading": "Synchronisation des modifications locales…",
+    "sync_problem": "Échec de la synchronisation. Vos modifications locales sont conservées. Réessayez.",
+    "sync_conflict": "Les données cloud ont changé. Vos modifications locales sont conservées ; vérifiez la facture avant de réessayer.",
+    "sync_retry": "Réessayer la synchronisation",
+    "sync_storage_error": "Impossible d’enregistrer sur cet appareil. Rien n’a été modifié. Vérifiez l’espace disponible et réessayez.",
+    "search_empty": "Aucune facture ne correspond à votre recherche ou au filtre.",
+    "search_clear": "Réinitialiser la recherche et les filtres",
+    "filter_all": "Tous les statuts",
+    "modal_close": "Fermer",
+    "link_open_error": "Impossible d’ouvrir ce lien. Réessayez."
   },
   "it": {
     "login_title": "DueFlux",
@@ -6383,6 +6532,20 @@
     "cadence_quarterly": "Trimestrale",
     "cadence_yearly": "Annuale",
     "cadence_unknown": "Sconosciuto",
-    "reports_failed": "Esportazione del rapporto non riuscita. Riprova."
+    "reports_failed": "Esportazione del rapporto non riuscita. Riprova.",
+    "sync_device_title": "Sincronizzazione dispositivo",
+    "sync_ready": "Le modifiche locali sono sincronizzate.",
+    "sync_pending": "{{count}} modifiche salvate su questo dispositivo.",
+    "sync_uploading": "Sincronizzazione delle modifiche locali…",
+    "sync_problem": "Sincronizzazione non riuscita. Le modifiche locali sono conservate. Riprova.",
+    "sync_conflict": "I dati nel cloud sono cambiati. Le modifiche locali sono conservate; controlla la fattura prima di riprovare.",
+    "sync_retry": "Riprova sincronizzazione",
+    "sync_storage_error": "Impossibile salvare su questo dispositivo. Nulla è stato modificato. Controlla lo spazio disponibile e riprova.",
+    "search_empty": "Nessuna fattura corrisponde alla ricerca o al filtro.",
+    "search_clear": "Reimposta ricerca e filtri",
+    "filter_all": "Tutti gli stati",
+    "modal_close": "Chiudi",
+    "link_open_error": "Impossibile aprire questo link. Riprova."
   }
-}; });
+};
+});

@@ -47,3 +47,37 @@ test("invalid invoice dates cannot crash date-based dashboard calculations", () 
   assert.equal(invoice.issueDate, null);
   assert.equal(invoice.dueDate, null);
 });
+
+test("mobile offline save waits for durable storage and leaves the editor open on failure", async () => {
+  const match = source.match(/async function handleSaveInvoice\([^]*?\n  \}/);
+  assert.ok(match);
+  const changes = { rendered: false, closed: false, busy: false, error: '' };
+  const context = vm.createContext({ Date, Number,
+    user: { uid: 'alice' }, auth: { currentUser: { uid: 'alice' } }, savingInvoice: false,
+    invoiceCompany: 'Utility', invoiceCategory: '', invoiceNumber: '', invoiceAmount: '12',
+    invoiceIssueDate: '', invoiceDueDate: '', invoiceCurrency: 'RON', invoiceStatus: 'unpaid',
+    planWorkspaceSpace: 'home', isOnline: false, invoices: [],
+    OfflineQueue: { newId: () => 'new-id' }, parseDateInput: () => null, serializeForCache: value => value,
+    offlineQueueEngine: { edit: async () => { throw new Error('Storage is full'); } },
+    t: key => key, setInvoiceError: value => { changes.error = value; }, setInvoiceMessage: () => {},
+    setSavingInvoice: value => { changes.busy = value; }, setInvoices: () => { changes.rendered = true; },
+    closeInvoiceModal: () => { changes.closed = true; },
+  });
+  vm.runInContext(match[0], context);
+  await context.handleSaveInvoice();
+  assert.deepEqual(changes, { rendered: false, closed: false, busy: false, error: 'sync_storage_error' });
+});
+
+test("failed payment confirmation never claims success or closes the action panel", async () => {
+  const match = source.match(/async function handleActionPaid\([^]*?\n  \}/);
+  assert.ok(match);
+  let announced = false; let closed = false;
+  const context = vm.createContext({ Date, actionInvoice: { id: 'a' },
+    patchInvoiceFromAction: async () => false, setSyncMessage: () => { announced = true; },
+    setActionInvoice: () => { closed = true; }, t: key => key,
+  });
+  vm.runInContext(match[0], context);
+  await context.handleActionPaid();
+  assert.equal(announced, false);
+  assert.equal(closed, false);
+});
