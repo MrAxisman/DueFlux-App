@@ -95,14 +95,57 @@ const firebaseStub = `(() => {
       await page.keyboard.press('Escape');
       await page.locator('#settings-backdrop.hidden').waitFor({ state: 'attached' });
       assert.equal(await page.evaluate(() => document.activeElement.id), 'btn-settings'); checks++;
-      for (const width of [390, 768, 1440]) {
-        await page.setViewportSize({ width, height: 850 });
-        const box = await page.locator('.app-hero').boundingBox();
-        assert(box && box.x >= 0 && box.x + box.width <= width + 1, `Hero overflow ${lang}/${width}`); checks++;
-        await page.evaluate(() => openSettings());
-        const panel = await page.locator('.settings-panel').boundingBox();
-        assert(panel && panel.height <= 850 && panel.width <= width + 1, `Settings overflow ${lang}/${width}`); checks++;
-        await page.keyboard.press('Escape');
+      for (const theme of ['dark', 'light']) {
+        await page.evaluate(theme => setThemeMode(theme, false), theme);
+        const contrasts = await page.evaluate(() => {
+          const luminance = rgb => {
+            const values = rgb.match(/[\d.]+/g).slice(0, 3).map(value => Number(value) / 255)
+              .map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4);
+            return values[0] * .2126 + values[1] * .7152 + values[2] * .0722;
+          };
+          return ['paid', 'unpaid', 'overdue'].map(status => {
+            const element = document.createElement('span');
+            element.className = `status-badge status-${status}`;
+            element.style.position = 'absolute'; element.style.top = '-9999px';
+            document.body.append(element);
+            const styles = getComputedStyle(element);
+            const text = luminance(styles.color), background = luminance(styles.backgroundColor);
+            const ratio = (Math.max(text, background) + .05) / (Math.min(text, background) + .05);
+            element.remove();
+            return { status, ratio };
+          });
+        });
+        for (const { status, ratio } of contrasts) {
+          assert(ratio >= 4.5, `Low status contrast ${lang}/${theme}/${status}: ${ratio}`); checks++;
+        }
+        for (const width of [390, 768, 1440]) {
+          await page.setViewportSize({ width, height: 850 });
+          await page.evaluate(() => { document.querySelector('.app-main').scrollTop = 0; });
+          // CDP resizing is asynchronous; compare boxes only after the responsive layout settles.
+          await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+          const box = await page.locator('.app-hero').boundingBox();
+          const header = await page.locator('.app-header').boundingBox();
+          const metric = await page.locator('.hero-metric').last().boundingBox();
+          assert(box && box.x >= 0 && box.x + box.width <= width + 1, `Hero overflow ${lang}/${theme}/${width}`); checks++;
+          assert(header.y + header.height + 12 <= box.y, `Header covers hero ${lang}/${theme}/${width}`); checks++;
+          assert(metric.y + metric.height <= box.y + box.height - 12,
+            `Metric clips hero ${lang}/${theme}/${width}: ${JSON.stringify({ box, metric })}`); checks++;
+          assert.equal(await page.locator('.app-main').evaluate(main => main.scrollWidth <= main.clientWidth + 1), true,
+            `Dashboard horizontal overflow ${lang}/${theme}/${width}`); checks++;
+          if (process.env.DUEFLUX_UI_SCREENSHOTS && lang === 'ro' && width !== 768) {
+            await fs.mkdir(process.env.DUEFLUX_UI_SCREENSHOTS, { recursive: true });
+            await page.screenshot({ path: path.join(process.env.DUEFLUX_UI_SCREENSHOTS, `dashboard-${theme}-${width}.png`) });
+          }
+          await page.evaluate(() => openSettings());
+          const panel = await page.locator('.settings-panel').boundingBox();
+          assert(panel && panel.height <= 850 && panel.width <= width + 1, `Settings overflow ${lang}/${theme}/${width}`); checks++;
+          const close = await page.locator('#settings-close').boundingBox();
+          assert(close.height >= 44 && close.width >= 44, `Settings touch target ${lang}/${theme}/${width}`); checks++;
+          if (process.env.DUEFLUX_UI_SCREENSHOTS && lang === 'ro' && width === 1440) {
+            await page.screenshot({ path: path.join(process.env.DUEFLUX_UI_SCREENSHOTS, `settings-${theme}.png`) });
+          }
+          await page.keyboard.press('Escape');
+        }
       }
       await page.evaluate(() => setThemeMode('light', false));
       assert.equal(await page.locator('html').getAttribute('data-theme'), 'light'); checks++;
@@ -110,6 +153,9 @@ const firebaseStub = `(() => {
       await page.locator('#trust-control-backdrop:not(.hidden)').waitFor();
       assert.equal(await page.locator('#trust-control-title').textContent(), packs[lang].invoice_search_label); checks++;
       assert.equal(await page.locator('#trust-control-content img').count(), 0); checks++;
+      if (process.env.DUEFLUX_UI_SCREENSHOTS && lang === 'ro') {
+        await page.screenshot({ path: path.join(process.env.DUEFLUX_UI_SCREENSHOTS, 'search-light.png') });
+      }
       await page.keyboard.press('Escape');
       if (lang === 'en') {
         await page.evaluate(() => {

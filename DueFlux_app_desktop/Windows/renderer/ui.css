@@ -1,0 +1,299 @@
+/* Presentation layer. Legacy rules stay in style.css until their components are migrated. */
+:root {
+  --ui-canvas: #08131f;
+  --ui-surface: #0f1e2d;
+  --ui-raised: #152737;
+  --ui-soft: #122332;
+  --ui-line: #294050;
+  --ui-ink: #eaf1f5;
+  --ui-muted: #a6b8c6;
+  --ui-accent: #64d8d0;
+  --ui-accent-soft: #163b40;
+  --ui-primary: #176c74;
+  --ui-primary-hover: #1b7b83;
+  --ui-success: #8ce0bb;
+  --ui-success-soft: #14392e;
+  --ui-warning: #f0c27a;
+  --ui-warning-soft: #382c1c;
+  --ui-danger: #ffadb2;
+  --ui-danger-soft: #3c242d;
+  --ui-shadow: 0 8px 28px rgba(0, 0, 0, .14);
+  --ui-radius: 20px;
+  --df-btn-h: 44px;
+  --df-btn-h-sm: 44px;
+  --df-btn-radius: 12px;
+  --bg: var(--ui-canvas);
+  --bg-card: var(--ui-surface);
+  --bg-soft: var(--ui-soft);
+  --bg-elevated: var(--ui-surface);
+  --border-subtle: var(--ui-line);
+  --text: var(--ui-ink);
+  --text-muted: var(--ui-muted);
+  --accent: var(--ui-accent);
+  --accent-soft: var(--ui-accent-soft);
+  --success: var(--ui-success);
+  --danger: var(--ui-danger);
+}
+
+html[data-theme="light"] {
+  --ui-canvas: #f2f5f4;
+  --ui-surface: #ffffff;
+  --ui-raised: #ffffff;
+  --ui-soft: #f4f7f6;
+  --ui-line: #d8e2df;
+  --ui-ink: #142e39;
+  --ui-muted: #516773;
+  --ui-accent: #126b70;
+  --ui-accent-soft: #e4f2ef;
+  --ui-primary: #176c74;
+  --ui-primary-hover: #11565e;
+  --ui-success: #176544;
+  --ui-success-soft: #e7f4ec;
+  --ui-warning: #895713;
+  --ui-warning-soft: #fff3df;
+  --ui-danger: #ac3040;
+  --ui-danger-soft: #fceef0;
+  --ui-shadow: 0 8px 28px rgba(20, 46, 57, .045);
+  --bg: var(--ui-canvas);
+  --bg-card: var(--ui-surface);
+  --bg-soft: var(--ui-soft);
+  --bg-elevated: var(--ui-surface);
+  --border-subtle: var(--ui-line);
+  --text: var(--ui-ink);
+  --text-muted: var(--ui-muted);
+  --accent: var(--ui-accent);
+  --accent-soft: var(--ui-accent-soft);
+  --success: var(--ui-success);
+  --danger: var(--ui-danger);
+}
+
+html[data-theme] body {
+  color: var(--ui-ink);
+  background: radial-gradient(ellipse at 0% 0%, color-mix(in srgb, var(--ui-accent) 8%, transparent), transparent 55%), var(--ui-canvas) !important;
+  font-family: var(--df-font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+html[data-theme] body::before,
+html[data-theme] body::after {
+  content: none;
+}
+
+/* A flow header removes viewport-dependent offsets and never covers the dashboard. */
+#app-screen:not(.hidden) {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+}
+
+html[data-theme] #app-screen .app-header {
+  position: relative;
+  inset: auto !important;
+  flex: 0 0 auto;
+  height: auto;
+  min-height: 72px;
+  margin: 12px clamp(12px, 2vw, 28px) 0;
+  padding: 12px 20px;
+  gap: 16px;
+  border-radius: 16px;
+  border: 1px solid var(--ui-line) !important;
+  background: var(--ui-surface) !important;
+  box-shadow: var(--ui-shadow);
+}
+
+html[data-theme] #app-screen .app-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto !important;
+  padding: 24px clamp(12px, 2vw, 28px) 40px !important;
+  gap: 24px !important;
+  scrollbar-gutter: stable;
+}
+
+#app-screen .app-header .left,
+#app-screen .app-header .right { min-width: 0; }
+#app-screen .app-header .right { justify-content: flex-end; }
+#app-screen .app-brand { min-width: 0; }
+#app-screen .app-subtitle { font-size: 12px; line-height: 1.5; }
+#app-screen .app-title { font-size: 20px; letter-spacing: -.03em; }
+
+html[data-theme] :is(.card, .modal, .settings-panel, .account-card, .mail-sync-panel, .mail-provider-card, .login-card, .splash-content) {
+  color: var(--ui-ink);
+  border: 1px solid var(--ui-line) !important;
+  border-radius: var(--ui-radius);
+  background: var(--ui-surface) !important;
+  box-shadow: var(--ui-shadow) !important;
+  backdrop-filter: none;
+}
+
+html[data-theme] :is(.card, .modal, .settings-panel, .login-card)::before,
+html[data-theme] :is(.card, .modal, .settings-panel, .login-card)::after {
+  content: none;
+}
+
+html[data-theme] .card:hover { transform: none; }
+html[data-theme] .card { padding: 24px; }
+html[data-theme] .card h3 { font-size: 18px; line-height: 1.4; letter-spacing: -.02em; }
+html[data-theme] :is(.small, .muted) { line-height: 1.6; }
+html[data-theme] .small { font-size: 13px; }
+
+html[data-theme] #app-screen .app-main > .app-hero {
+  padding: clamp(24px, 2.6vw, 36px);
+  background: linear-gradient(110deg, color-mix(in srgb, var(--ui-accent-soft) 50%, var(--ui-surface)), var(--ui-surface) 75%) !important;
+}
+
+.app-hero-grid { grid-template-columns: minmax(0, 1.15fr) minmax(300px, 1fr); gap: 36px; }
+.hero-eyebrow { color: var(--ui-accent); font-size: 11px; font-weight: 700; letter-spacing: .12em; }
+.hero-title { font-size: clamp(28px, 2.7vw, 40px); line-height: 1.12; letter-spacing: -.04em; }
+.hero-subtitle { max-width: 52ch; font-size: 14px; }
+.hero-pills { margin-top: 20px; gap: 8px 12px; }
+.hero-pill { display: inline-flex; gap: 6px; align-items: center; padding: 0; border: 0; color: var(--ui-muted); font-size: 11px; line-height: 1.6; }
+.hero-pill::before { content: ""; flex: 0 0 4px; width: 4px; height: 4px; border-radius: 50%; background: var(--ui-accent); }
+.app-hero-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.hero-metric { padding: 18px; border-color: var(--ui-line); border-radius: 14px; background: var(--ui-surface); }
+.hero-metric p { font-size: 11px; line-height: 1.6; letter-spacing: .03em; }
+.hero-metric strong { font-size: clamp(22px, 2vw, 30px); letter-spacing: -.03em; }
+.hero-metric:last-child { grid-column: 1 / -1; padding-block: 12px; }
+.hero-metric:last-child strong { font-size: 14px; font-weight: 600; }
+
+html[data-theme] .df-workspace { padding: 0; gap: 18px; border: 0; background: none; box-shadow: none; overflow: visible; }
+.df-workspace::after { content: none; }
+.df-workspace-bar { flex-wrap: wrap; gap: 12px; }
+html[data-theme] .df-space-switcher { border: 0; border-radius: 12px; padding: 4px; background: var(--ui-accent-soft); backdrop-filter: none; }
+html[data-theme] .df-space-chip { min-height: 36px; border-radius: 9px; font-size: 13px; }
+html[data-theme] .df-space-chip:is(.is-active, :hover) { color: var(--ui-accent); background: var(--ui-surface); box-shadow: 0 2px 5px rgba(0, 0, 0, .05); }
+html[data-theme] :is(.df-pulse-shell, .df-intelligence-card) { padding: 24px; border-color: var(--ui-line); border-radius: var(--ui-radius); background: var(--ui-surface); box-shadow: var(--ui-shadow); backdrop-filter: none; }
+html[data-theme] .df-eyebrow { color: var(--ui-accent); font-size: 10px; letter-spacing: .12em; }
+.df-pulse-heading, .df-card-heading { flex-wrap: wrap; }
+.df-pulse-heading h3, .df-card-heading h3 { font-size: 18px; line-height: 1.4; letter-spacing: -.02em; }
+.df-pulse-cards { gap: 12px; margin-top: 20px; }
+html[data-theme] .df-pulse-card { border: 0; border-radius: 14px; padding: 18px; background: var(--ui-soft); box-shadow: none; }
+.df-pulse-card::before { inset: 18px auto 18px 0; background: var(--ui-line); width: 2px; border-radius: 2px; }
+.df-pulse-card:first-child::before { background: var(--ui-warning); }
+.df-pulse-card:last-child::before { background: var(--ui-success); }
+.df-pulse-card strong { margin: 10px 0; font-size: 30px; font-variant-numeric: tabular-nums; letter-spacing: -.04em; }
+.df-pulse-card p { font-size: 12px; line-height: 1.6; }
+html[data-theme] :is(.df-timeline-item, .df-guard-item, .df-evidence-item, .df-provider-item, .df-forwarding-address, .df-reminder-editor) { border-color: var(--ui-line); background: var(--ui-soft); box-shadow: none; }
+html[data-theme] :is(.df-live-badge, .df-confidence-badge) { color: var(--ui-success); background: var(--ui-success-soft); border-color: color-mix(in srgb, var(--ui-success) 25%, var(--ui-line)); font-weight: 600; }
+html[data-theme] .df-live-badge::before { margin-inline: 0 7px; background: var(--ui-success); box-shadow: none; }
+html[data-theme] :is(.df-count-badge, .df-timeline-date) { color: var(--ui-accent); background: var(--ui-accent-soft); border-color: var(--ui-line); }
+
+html[data-theme] .kpi { min-height: 104px; border: 0 !important; border-radius: 14px; background: var(--ui-soft) !important; box-shadow: none; padding: 18px; }
+#app-screen .kpi-value { font-size: 28px !important; line-height: 1.3 !important; font-weight: 700; }
+html[data-theme] :is(.kpi-label, th) { color: var(--ui-muted); font-size: 11px; font-weight: 600; }
+.kpi-value, .hero-metric strong { font-variant-numeric: tabular-nums; }
+html[data-theme] .table-wrap { border-color: var(--ui-line) !important; border-radius: 14px; background: var(--ui-surface) !important; box-shadow: none; }
+html[data-theme] thead { background: var(--ui-soft) !important; }
+html[data-theme] :is(th, td) { border-color: var(--ui-line); }
+html[data-theme] tbody tr:hover { background: var(--ui-soft); }
+#app-screen .table-header { flex-wrap: wrap; gap: 16px; }
+
+/* Match legacy ID-specific button rules without adding another fixed-height trap. */
+html[data-theme] body :is(#app-screen, #login-screen, #settings-backdrop, .modal, #local-lock) :is(.primary-btn, .ghost-btn, .user-pill, .settings-chip, .linklike-btn) {
+  height: auto !important;
+  min-height: 44px !important;
+  padding: 10px 16px !important;
+  border-radius: 12px !important;
+  line-height: 1.4 !important;
+  white-space: normal !important;
+  text-align: center;
+  font-size: 13px !important;
+  box-shadow: none !important;
+}
+
+html[data-theme] body :is(#app-screen, #login-screen, #settings-backdrop, .modal, #local-lock) .primary-btn {
+  color: #ffffff !important;
+  border-color: var(--ui-primary) !important;
+  background: var(--ui-primary) !important;
+  box-shadow: 0 3px 8px rgba(23, 108, 116, .12) !important;
+}
+
+html[data-theme] body :is(#app-screen, #login-screen, #settings-backdrop, .modal, #local-lock) .primary-btn:hover { background: var(--ui-primary-hover) !important; transform: none !important; filter: none !important; }
+html[data-theme] body :is(#app-screen, #login-screen, #settings-backdrop, .modal) :is(.ghost-btn, .user-pill, .settings-chip) { border-color: var(--ui-line) !important; background: var(--ui-surface) !important; color: var(--ui-ink) !important; }
+html[data-theme] body :is(#app-screen, #login-screen, #settings-backdrop, .modal) :is(.ghost-btn, .user-pill, .settings-chip):hover { border-color: var(--ui-accent) !important; background: var(--ui-soft) !important; transform: none !important; }
+html[data-theme] body :is(#app-screen, #login-screen, #settings-backdrop, .modal) .ghost-btn.danger { color: var(--ui-danger) !important; background: var(--ui-danger-soft) !important; border-color: color-mix(in srgb, var(--ui-danger) 30%, var(--ui-line)) !important; }
+html[data-theme] body :is(#app-screen, #login-screen, #settings-backdrop, .modal) .settings-chip:is(.active, .is-active) { color: var(--ui-accent) !important; border-color: var(--ui-accent) !important; background: var(--ui-accent-soft) !important; }
+html[data-theme] .icon-btn { color: var(--ui-ink); border-color: var(--ui-line); background: var(--ui-soft); box-shadow: none; }
+html[data-theme] #app-screen .table-wrap .text-btn { min-height: 36px !important; height: auto !important; border-radius: 8px !important; color: var(--ui-accent) !important; border-color: var(--ui-line) !important; background: var(--ui-soft) !important; line-height: 1.4 !important; }
+html[data-theme] #app-screen .table-wrap .text-btn[data-action="delete"] { color: var(--ui-danger) !important; background: var(--ui-danger-soft) !important; }
+html[data-theme] :is(.plan-badge, .df-row-action) { color: var(--ui-accent); background: var(--ui-accent-soft); border-color: var(--ui-line); }
+html[data-theme] :is(input, select, textarea, .select-shell, .invoice-search) { color: var(--ui-ink); border-color: var(--ui-line); background: var(--ui-soft); border-radius: 12px; min-height: 44px; box-shadow: none; }
+html[data-theme] :is(input, textarea)::placeholder { color: var(--ui-muted); opacity: 1; }
+html[data-theme] :is(input, select, textarea):focus { border-color: var(--ui-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-accent) 12%, transparent); }
+html[data-theme] input[type="checkbox"] { min-height: 20px; accent-color: var(--ui-primary); }
+html[data-theme] :is(#invoice-month-picker, #invoice-search) { background: var(--ui-soft) !important; border-color: var(--ui-line) !important; color: var(--ui-ink) !important; }
+html[data-theme] :is(#invoice-month-picker, #invoice-search):focus { border-color: var(--ui-accent) !important; }
+html[data-theme] .status-badge { padding: 4px 10px; font-size: 12px; line-height: 1.4; font-weight: 600; }
+html[data-theme] .status-paid { color: var(--ui-success) !important; background: var(--ui-success-soft) !important; border-color: color-mix(in srgb, var(--ui-success) 30%, var(--ui-line)); }
+html[data-theme] .status-unpaid { color: var(--ui-warning) !important; background: var(--ui-warning-soft) !important; border-color: color-mix(in srgb, var(--ui-warning) 30%, var(--ui-line)); }
+html[data-theme] .status-overdue { color: var(--ui-danger) !important; background: var(--ui-danger-soft) !important; border-color: color-mix(in srgb, var(--ui-danger) 30%, var(--ui-line)); }
+html[data-theme] :is(button, a, input, select, textarea):focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 3px; }
+html[data-theme] :is(.mail-provider-card, .mail-sync-panel, .phone-inbox-meta, .settings-phone-inbox-box) { box-shadow: none !important; border-color: var(--ui-line); }
+
+html[data-theme] :is(.modal-backdrop, .settings-backdrop) { background: rgba(4, 15, 22, .6); backdrop-filter: blur(5px); }
+html[data-theme] .modal { padding: 24px; }
+html[data-theme] .modal-header { gap: 16px; align-items: flex-start; }
+html[data-theme] .modal-title { font-size: 22px; letter-spacing: -.03em; line-height: 1.3; }
+html[data-theme] #settings-backdrop .settings-panel { width: min(480px, calc(100vw - 24px)); max-width: none; height: calc(100dvh - 24px); max-height: calc(100dvh - 24px); margin: 12px; padding: 24px; font-size: 14px; }
+html[data-theme] #settings-backdrop .settings-header { background: var(--ui-surface); padding-block: 4px 16px; }
+html[data-theme] .settings-section { border-color: var(--ui-line); margin-top: 8px; padding-top: 20px; }
+html[data-theme] .settings-section h3 { font-size: 14px; margin-bottom: 12px; }
+html[data-theme] #settings-title { font-size: 24px; color: var(--ui-ink); background: none; -webkit-text-fill-color: currentColor; }
+.trust-field { gap: 8px; }
+.trust-field :is(input, select) { width: 100%; }
+.trust-record { background: var(--ui-soft); align-items: flex-start; }
+.trust-record > strong { line-height: 1.5; overflow-wrap: anywhere; }
+.trust-record p { font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.trust-source { background: var(--ui-soft); padding: 16px; border-radius: 12px; }
+.trust-document { background: var(--ui-soft); }
+.trust-selection { padding: 8px 12px; border: 1px solid var(--ui-line); border-radius: 12px; background: var(--ui-soft); }
+html[data-theme] .device-sync-panel { margin-block: 16px; border-color: var(--ui-line); border-inline-start-color: var(--ui-accent); background: var(--ui-soft); }
+.local-lock { background: radial-gradient(ellipse at top, var(--ui-accent-soft), transparent 60%), var(--ui-canvas); }
+.local-lock-card { padding: 32px; border-radius: 24px; box-shadow: var(--ui-shadow); }
+.local-lock-card h2 { margin: 0; font-size: 28px; letter-spacing: -.035em; }
+#local-lock-error:empty, #trust-control-status:empty { display: none; }
+
+@media (max-width: 1100px) {
+  .app-hero-grid { grid-template-columns: 1fr; gap: 24px; }
+  .app-hero-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .hero-metric:last-child { grid-column: auto; padding-block: 18px; }
+  #app-screen .app-header { flex-wrap: wrap; }
+  #app-screen .app-header .right { flex-wrap: wrap; }
+}
+
+@media (max-width: 760px) {
+  html[data-theme] #app-screen .app-header { padding: 12px 14px; margin-inline: 12px; }
+  html[data-theme] #app-screen .app-main { padding-top: 16px !important; gap: 16px !important; }
+  #app-screen .app-header .right { justify-content: flex-start; }
+  html[data-theme] .card, html[data-theme] :is(.df-pulse-shell, .df-intelligence-card) { padding: 18px; }
+  .df-workspace-bar { align-items: stretch; }
+  .df-pulse-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  html[data-theme] .df-pulse-card { padding: 14px; }
+  .df-workspace-actions { gap: 8px; }
+  .df-workspace-actions > button { flex: 1 1 0; }
+  .df-timeline-item, .df-guard-item { grid-template-columns: auto minmax(0, 1fr); }
+  .df-timeline-item > button, .df-guard-item > button { grid-column: 2; justify-self: start; min-height: 44px; }
+  html[data-theme] #app-screen .table-wrap .text-btn { min-height: 44px !important; }
+  .table-header-actions > button { flex: 1 1 auto; }
+  html[data-theme] #app-screen .table-header-actions .primary-btn { flex: 1 1 100% !important; }
+  .app-hero-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hero-metric:last-child { grid-column: 1 / -1; padding-block: 12px; }
+  .hero-metric { padding: 14px; }
+  .hero-metric strong { font-size: 18px; }
+  .hero-metric:last-child strong { font-size: 14px; }
+  html[data-theme] .modal, html[data-theme] #settings-backdrop .settings-panel { padding: 20px; }
+  .local-lock { padding: 16px; }
+  .local-lock-card { padding: 24px; }
+}
+
+@media (max-width: 360px) {
+  .app-hero-metrics, .df-pulse-cards { grid-template-columns: 1fr; }
+}
+
+html[dir="rtl"] .df-pulse-card::before { inset-inline-start: 0; inset-inline-end: auto; }
+html[dir="rtl"] :is(th, td, .trust-field) { text-align: start; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .app-hero-copy, .df-pulse-heading { animation: ui-reveal 220ms ease-out both; }
+  @keyframes ui-reveal { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+}

@@ -61,7 +61,8 @@ function evaluateDesktop(source) {
 
 function evaluateMobile(source) {
   const start = source.indexOf("const translations = {");
-  const end = source.indexOf("const THEMES =", start);
+  const end = source.indexOf("function planLabel(", start);
+  if (start < 0 || end <= start) throw new Error("Missing mobile translation section boundaries");
   const code = source
     .slice(start, end)
     .replace("const translations = {", "var translations = globalThis.translations = {");
