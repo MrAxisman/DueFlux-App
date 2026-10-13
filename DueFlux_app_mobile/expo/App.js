@@ -4486,8 +4486,8 @@ export default function App() {
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
       const current = syncActiveRef.current;
-      if (state === 'background' || (state === 'inactive' && !ProtectedStorage.isLocked())) ProtectedStorage.lock();
-      else if (current.uid && current.online && !ProtectedStorage.isLocked()) void drainOfflineQueue(current.uid).catch(() => {});
+      if (state === 'background') ProtectedStorage.lock();
+      else if (state === 'active' && current.uid && current.online && !ProtectedStorage.isLocked()) void drainOfflineQueue(current.uid).catch(() => {});
     });
     return () => subscription.remove();
   }, [drainOfflineQueue]);
