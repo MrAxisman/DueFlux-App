@@ -179,10 +179,10 @@ html[data-theme] .df-live-badge::before { margin-inline: 0 7px; background: var(
 html[data-theme] :is(.df-count-badge, .df-timeline-date) { color: var(--ui-accent); background: var(--ui-accent-soft); border-color: var(--ui-line); }
 
 html[data-theme] .kpi { min-height: 104px; border: 0 !important; border-radius: 14px; background: var(--ui-soft) !important; box-shadow: none; padding: 18px; }
-#app-screen .kpi-value { font-size: 28px !important; line-height: 1.3 !important; }
+#app-screen .kpi-value { font-size: 28px !important; line-height: 1.3 !important; font-weight: 700; }
 html[data-theme] :is(.kpi-label, th) { color: var(--ui-muted); font-size: 11px; font-weight: 600; }
 .kpi-value, .hero-metric strong { font-variant-numeric: tabular-nums; }
-html[data-theme] .table-wrap { border-color: var(--ui-line); border-radius: 14px; background: var(--ui-surface) !important; box-shadow: none; }
+html[data-theme] .table-wrap { border-color: var(--ui-line) !important; border-radius: 14px; background: var(--ui-surface) !important; box-shadow: none; }
 html[data-theme] thead { background: var(--ui-soft) !important; }
 html[data-theme] :is(th, td) { border-color: var(--ui-line); }
 html[data-theme] tbody tr:hover { background: var(--ui-soft); }
@@ -221,6 +221,12 @@ html[data-theme] :is(input, select, textarea, .select-shell, .invoice-search) { 
 html[data-theme] :is(input, textarea)::placeholder { color: var(--ui-muted); opacity: 1; }
 html[data-theme] :is(input, select, textarea):focus { border-color: var(--ui-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-accent) 12%, transparent); }
 html[data-theme] input[type="checkbox"] { min-height: 20px; accent-color: var(--ui-primary); }
+html[data-theme] :is(#invoice-month-picker, #invoice-search) { background: var(--ui-soft) !important; border-color: var(--ui-line) !important; color: var(--ui-ink) !important; }
+html[data-theme] :is(#invoice-month-picker, #invoice-search):focus { border-color: var(--ui-accent) !important; }
+html[data-theme] .status-badge { padding: 4px 10px; font-size: 12px; line-height: 1.4; font-weight: 600; }
+html[data-theme] .status-paid { color: var(--ui-success) !important; background: var(--ui-success-soft) !important; border-color: color-mix(in srgb, var(--ui-success) 30%, var(--ui-line)); }
+html[data-theme] .status-unpaid { color: var(--ui-warning) !important; background: var(--ui-warning-soft) !important; border-color: color-mix(in srgb, var(--ui-warning) 30%, var(--ui-line)); }
+html[data-theme] .status-overdue { color: var(--ui-danger) !important; background: var(--ui-danger-soft) !important; border-color: color-mix(in srgb, var(--ui-danger) 30%, var(--ui-line)); }
 html[data-theme] :is(button, a, input, select, textarea):focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 3px; }
 html[data-theme] :is(.mail-provider-card, .mail-sync-panel, .phone-inbox-meta, .settings-phone-inbox-box) { box-shadow: none !important; border-color: var(--ui-line); }
 
