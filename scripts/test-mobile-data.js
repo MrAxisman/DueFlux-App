@@ -14,7 +14,7 @@ const helpers = names.map(name => {
 
 function setup(stored) {
   const context = vm.createContext({ Date, OFFLINE_CACHE_PREFIX: "cache_", OFFLINE_QUEUE_PREFIX: "queue_",
-    AsyncStorage: { getItem: async () => stored },
+    ProtectedStorage: { getItem: async () => stored },
   });
   vm.runInContext(helpers, context);
   return context;
@@ -53,6 +53,7 @@ test("mobile offline save waits for durable storage and leaves the editor open o
   assert.ok(match);
   const changes = { rendered: false, closed: false, busy: false, error: '' };
   const context = vm.createContext({ Date, Number,
+    RecordVersion: require('../DueFlux_app_mobile/expo/recordVersion'),
     user: { uid: 'alice' }, auth: { currentUser: { uid: 'alice' } }, savingInvoice: false,
     invoiceCompany: 'Utility', invoiceCategory: '', invoiceNumber: '', invoiceAmount: '12',
     invoiceIssueDate: '', invoiceDueDate: '', invoiceCurrency: 'RON', invoiceStatus: 'unpaid',

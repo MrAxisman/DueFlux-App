@@ -12,7 +12,11 @@ const expectedLanguages = ["ro", "hu", "de", "fr", "en", "it", "tr", "zh", "ar",
 
 function collectStaticKeys(source) {
   const keys = new Set();
-  for (const match of source.matchAll(/\bt\(\s*["']([^"']+)["']\s*\)/g)) keys.add(match[1]);
+  for (const match of source.matchAll(/\b(?:t|translate|field|select|button)\(\s*["']([^"']+)["']\s*[,)]/g)) keys.add(match[1]);
+  for (const match of source.matchAll(/labelKey=\{?['"]([^'"]+)['"]/g)) keys.add(match[1]);
+  for (const key of ['sync_center', 'action_reminder', 'collaboration', 'review_document', 'invoice_search_label',
+    ...['owner', 'admin', 'operator', 'accountant', 'viewer', 'member'].map(role => 'role_' + role),
+    ...['scheduled', 'processing', 'sent', 'delivered', 'failed', 'cancelled', 'ready'].map(status => 'delivery_' + status)]) keys.add(key);
   return [...keys].sort();
 }
 
@@ -121,8 +125,8 @@ const [desktopSource, mobileSource] = await Promise.all([
   fs.readFile(mobilePath, "utf8"),
 ]);
 const reports = [
-  auditSurface("desktop", desktopSource, evaluateDesktop(desktopSource)),
-  auditSurface("mobile", mobileSource, evaluateMobile(mobileSource)),
+  auditSurface("desktop", desktopSource + await fs.readFile(path.join(root, 'DueFlux_app_desktop/Windows/renderer/trust-controls.js'), 'utf8'), evaluateDesktop(desktopSource)),
+  auditSurface("mobile", mobileSource + await fs.readFile(path.join(root, 'DueFlux_app_mobile/expo/TrustPanel.js'), 'utf8'), evaluateMobile(mobileSource)),
 ];
 
 let failed = false;

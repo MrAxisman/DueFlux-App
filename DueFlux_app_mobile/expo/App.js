@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import TrustPanel from './TrustPanel';
 import {
   ActivityIndicator,
   AppState,
@@ -47,6 +48,7 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocFromServer,
   getFirestore,
   onSnapshot,
   query,
@@ -58,6 +60,9 @@ import { getFunctions, httpsCallable } from "firebase/functions";
 import { getStorage, listAll, ref } from "firebase/storage";
 const Intelligence = require("./productIntelligence");
 const OfflineQueue = require("./offlineQueue");
+const ProtectedStorage = require("./protectedStorage");
+const RecordVersion = require('./recordVersion');
+const NativeNotifications = require('./nativeNotifications');
 const featureLocales = require("./featureLocales");
 
 const LOGO = require("./assets/logo-dueflux.png");
@@ -86,7 +91,7 @@ const firebaseApp = getApps().length ? getApps()[0] : initializeApp(firebaseConf
 const auth = (() => {
   try {
     return initializeAuth(firebaseApp, {
-      persistence: getReactNativePersistence(AsyncStorage),
+      persistence: getReactNativePersistence(ProtectedStorage.authStorage),
     });
   } catch (error) {
     // Fast Refresh can reuse an already initialized Auth instance.
@@ -1743,7 +1748,7 @@ function planLabel(plan) {
   return value === "BUSINESS" ? "BUSINESS" : "BASIC";
 }
 
-function createStyles(theme) {
+function createStyles(theme, density = 'comfortable') {
   return StyleSheet.create({
   app: {
     flex: 1,
@@ -2484,7 +2489,7 @@ function createStyles(theme) {
     borderWidth: 1,
     borderColor: theme.borderLight,
     backgroundColor: theme.rowBg,
-    padding: 12,
+    padding: density === 'compact' ? 10 : 16,
     marginBottom: 10,
   },
   invoiceRowHeader: {
@@ -3525,6 +3530,7 @@ function getInvoiceEffectiveStatus(invoice) {
 }
 
 function invoiceLooksLikeSubscription(invoice) {
+  if (invoice?.duplicateOf) return false;
   if (!invoice || typeof invoice !== "object") return false;
   if (invoice.recurring === true) return true;
   if (String(invoice.invoiceType || "").toLowerCase() === "subscription") return true;
@@ -3693,7 +3699,7 @@ function serializeForCache(value) {
 async function loadOfflineCache(uid) {
   if (!uid) return null;
   try {
-    const raw = await AsyncStorage.getItem(offlineCacheKey(uid));
+    const raw = await ProtectedStorage.getItem(offlineCacheKey(uid));
     if (!raw) return null;
     const cache = JSON.parse(raw);
     if (Array.isArray(cache.invoices)) {
@@ -3710,7 +3716,7 @@ async function loadOfflineCache(uid) {
 async function saveOfflineCache(uid, payload) {
   if (!uid) return;
   try {
-    await AsyncStorage.setItem(
+    await ProtectedStorage.setItem(
       offlineCacheKey(uid),
       JSON.stringify({
         savedAt: new Date().toISOString(),
@@ -3725,7 +3731,7 @@ async function saveOfflineCache(uid, payload) {
 async function getOfflineQueue(uid) {
   if (!uid) return [];
   try {
-    const raw = await AsyncStorage.getItem(offlineQueueKey(uid));
+    const raw = await ProtectedStorage.getItem(offlineQueueKey(uid));
     const parsed = raw ? JSON.parse(raw) : [];
     if (!Array.isArray(parsed)) throw new Error("Invalid offline queue");
     return parsed;
@@ -3737,7 +3743,7 @@ async function getOfflineQueue(uid) {
 async function setOfflineQueue(uid, queue) {
   if (!uid) return;
   try {
-    await AsyncStorage.setItem(offlineQueueKey(uid), JSON.stringify(queue || []));
+    await ProtectedStorage.setItem(offlineQueueKey(uid), JSON.stringify(queue || []));
   } catch (_) {
     throw new Error("Offline changes could not be saved on this device.");
   }
@@ -3746,6 +3752,7 @@ async function setOfflineQueue(uid, queue) {
 const offlineQueueEngine = OfflineQueue.create({
   read: getOfflineQueue, write: setOfflineQueue,
   apply: async (uid, mutation) => {
+    if (ProtectedStorage.isLocked()) throw new Error('Vault locked');
     if (auth.currentUser?.uid !== uid) throw new Error("Account changed");
     await httpsCallable(functions, "applyOfflineMutation")({ mutation });
   },
@@ -3829,9 +3836,17 @@ export default function App() {
   const [plan, setPlan] = useState("basic");
   const [lang, setLang] = useState("en");
   const [themeMode, setThemeMode] = useState("dark");
+  const [density, setDensity] = useState('comfortable');
   const [error, setError] = useState("");
   const [invoices, setInvoices] = useState([]);
   const [invoicesReady, setInvoicesReady] = useState(false);
+  const [vaultLocked, setVaultLocked] = useState(ProtectedStorage.isLocked());
+  const [vaultOpening, setVaultOpening] = useState(false);
+  const [vaultError, setVaultError] = useState(false);
+  const [trustVisible, setTrustVisible] = useState(false);
+  const [trustMode, setTrustMode] = useState('sync');
+  const [trustInvoiceId, setTrustInvoiceId] = useState('');
+  const [trustGeneration, setTrustGeneration] = useState(0);
   const [invoiceSearch, setInvoiceSearch] = useState("");
   const [invoiceFilter, setInvoiceFilter] = useState("all");
   const [pendingChanges, setPendingChanges] = useState(0);
@@ -3869,7 +3884,6 @@ export default function App() {
   const [reportFields, setReportFields] = useState(REPORT_FIELDS);
   const [reportBusy, setReportBusy] = useState(false);
   const [actionInvoice, setActionInvoice] = useState(null);
-  const [reminderInput, setReminderInput] = useState("");
   const [forwardingAddress, setForwardingAddress] = useState("");
   const [sourceHubVisible, setSourceHubVisible] = useState(false);
   const [privacyVisible, setPrivacyVisible] = useState(false);
@@ -3891,7 +3905,10 @@ export default function App() {
   });
 
   const loadingTimeoutRef = useRef(null);
+  const localActivityRef = useRef(Date.now());
   const authUidRef = useRef(null);
+  const syncPausedRef = useRef(false);
+  syncPausedRef.current = trustVisible && trustMode === 'sync';
   const splashOpacity = useRef(new Animated.Value(1)).current;
   const splashScale = useRef(new Animated.Value(0.98)).current;
   const statusPulse = useRef(new Animated.Value(0)).current;
@@ -3901,7 +3918,16 @@ export default function App() {
   const resolvedMode =
     themeMode === "auto" ? (systemScheme === "light" ? "light" : "dark") : themeMode;
   const theme = THEMES[resolvedMode] || THEMES.dark;
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme, density), [theme, density]);
+  useEffect(() => {
+    let active = true;
+    void AsyncStorage.getItem('df_density').then(value => { if (active && value === 'compact') setDensity(value); }).catch(() => {});
+    return () => { active = false; };
+  }, []);
+  const changeDensity = useCallback(async value => {
+    if (!['comfortable', 'compact'].includes(value)) return;
+    await AsyncStorage.setItem('df_density', value); setDensity(value);
+  }, []);
   const compactHeader = width < 520;
 
   const emailVerified = !!user?.emailVerified;
@@ -3910,6 +3936,40 @@ export default function App() {
     (key) => dict[key] || translations.en[key] || key,
     [dict]
   );
+  const callTrustControl = useCallback(async payload => {
+    if (!isOnline || ProtectedStorage.isLocked() || !user?.uid || auth.currentUser?.uid !== user.uid) throw new Error('Unavailable');
+    const result = await httpsCallable(functions, 'appControl')(payload);
+    if (ProtectedStorage.isLocked() || auth.currentUser?.uid !== user.uid) throw new Error('Account changed');
+    return result.data || {};
+  }, [isOnline, user?.uid]);
+  const refreshTrustInvoice = useCallback(async id => {
+    const uid = auth.currentUser?.uid;
+    if (!uid || ProtectedStorage.isLocked()) return;
+    const document = await getDocFromServer(doc(firestore, 'users', uid, 'invoices', id));
+    const queue = await getOfflineQueue(uid);
+    if (ProtectedStorage.isLocked() || auth.currentUser?.uid !== uid) return;
+    setInvoices(current => {
+      const next = current.filter(invoice => invoice.id !== id);
+      if (document.exists()) next.push(normalizeInvoiceDoc(document));
+      return OfflineQueue.projectInvoices(next, queue).map(invoice => normalizeInvoiceDoc({ id: invoice.id, data: () => invoice }));
+    });
+  }, []);
+  useEffect(() => {
+    if (!user?.uid || vaultLocked) return undefined;
+    return NativeNotifications.listen(user.uid, callTrustControl, () => {
+      setTrustMode('reminders'); setTrustInvoiceId(''); setTrustGeneration(previous => previous + 1); setTrustVisible(true);
+    });
+  }, [callTrustControl, user?.uid, vaultLocked]);
+  useEffect(() => ProtectedStorage.subscribe((locked) => {
+    setVaultLocked(locked);
+    if (locked) { setInvoices([]); setMailAccounts({}); setActionInvoice(null); setSettingsVisible(false); setTrustVisible(false); }
+  }), []);
+  useEffect(() => {
+    const timer = globalThis.setInterval(() => {
+      if (!ProtectedStorage.isLocked() && Date.now() - localActivityRef.current > 300000) ProtectedStorage.lock();
+    }, 15000);
+    return () => globalThis.clearInterval(timer);
+  }, []);
   const accountLabel = plan === "business"
     ? companyName || displayName || user?.email || t("user_fallback")
     : displayName || user?.email || t("user_fallback");
@@ -4073,11 +4133,11 @@ export default function App() {
       } catch (_) {
         // The cached plan remains available when Firestore is temporarily unavailable.
       }
-      const cachedPlan = await AsyncStorage.getItem(`${MOBILE_PLAN_KEY}_${authUser.uid}`).catch(() => null);
+      const cachedPlan = await ProtectedStorage.getItem(`${MOBILE_PLAN_KEY}_${authUser.uid}`).catch(() => null);
       const planValue = claimedPlan || profilePlan || normalizeAccountPlan(cachedPlan);
       if (auth.currentUser?.uid !== authUser.uid) return;
       setPlan(planValue);
-      await AsyncStorage.setItem(`${MOBILE_PLAN_KEY}_${authUser.uid}`, planValue).catch(() => {});
+      await ProtectedStorage.setItem(`${MOBILE_PLAN_KEY}_${authUser.uid}`, planValue).catch(() => {});
       try {
         await setDoc(
           doc(firestore, "users", authUser.uid),
@@ -4134,6 +4194,7 @@ export default function App() {
         setPrivacyVisible(false);
         setMailConnectVisible(false);
         setReportVisible(false);
+        setTrustVisible(false);
       }
       setError("");
       setUser(authUser || null);
@@ -4212,7 +4273,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!user?.uid) return undefined;
+    if (!user?.uid || vaultLocked) return undefined;
     let active = true;
     let receivedProfile = false;
     void loadOfflineCache(user.uid).then((cache) => {
@@ -4238,7 +4299,7 @@ export default function App() {
         if (data.plan) {
           const nextPlan = normalizeAccountPlan(data.plan);
           setPlan(nextPlan);
-          void AsyncStorage.setItem(`${MOBILE_PLAN_KEY}_${user.uid}`, nextPlan).catch(() => {});
+          void ProtectedStorage.setItem(`${MOBILE_PLAN_KEY}_${user.uid}`, nextPlan).catch(() => {});
         }
         if (data.lang) {
           setLang((prev) => (data.lang && data.lang !== prev ? data.lang : prev));
@@ -4275,10 +4336,10 @@ export default function App() {
       }
     );
     return () => { active = false; unsubscribe(); };
-  }, [user?.uid]);
+  }, [user?.uid, vaultLocked]);
 
   useEffect(() => {
-    if (!user?.uid) return undefined;
+    if (!user?.uid || vaultLocked) return undefined;
     const ref = collection(firestore, "users", user.uid, "mail_accounts");
     let active = true;
     let receivedSnapshot = false;
@@ -4317,10 +4378,10 @@ export default function App() {
       }
     );
     return () => { active = false; unsubscribe(); };
-  }, [user?.uid]);
+  }, [user?.uid, vaultLocked]);
 
   useEffect(() => {
-    if (!user?.uid) return undefined;
+    if (!user?.uid || vaultLocked) return undefined;
     let active = true;
     let receivedSnapshot = false;
     let snapshotVersion = 0;
@@ -4384,12 +4445,12 @@ export default function App() {
       }
     );
     return () => { active = false; unsubscribe(); };
-  }, [user?.uid]);
+  }, [user?.uid, vaultLocked]);
 
   const syncActiveRef = useRef({ uid: user?.uid, online: isOnline });
   syncActiveRef.current = { uid: user?.uid, online: isOnline };
-  const drainOfflineQueue = useCallback(async (uid) => {
-    const active = () => syncActiveRef.current.uid === uid && syncActiveRef.current.online;
+  const drainOfflineQueue = useCallback(async (uid, manual = false) => {
+    const active = () => syncActiveRef.current.uid === uid && syncActiveRef.current.online && !ProtectedStorage.isLocked() && (manual || !syncPausedRef.current);
     try {
       const queue = await getOfflineQueue(uid);
       if (active()) setDeviceSyncPhase(queue.length ? "syncing" : "ready");
@@ -4413,7 +4474,7 @@ export default function App() {
     return () => { active = false; unsubscribe(); };
   }, [user?.uid]);
   useEffect(() => {
-    if (!user?.uid || !isOnline) return;
+    if (!user?.uid || !isOnline || vaultLocked) return;
     const uid = user.uid;
     let cancelled = false;
     void Promise.resolve().then(() => {
@@ -4421,11 +4482,12 @@ export default function App() {
     })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [drainOfflineQueue, isOnline, user?.uid]);
+  }, [drainOfflineQueue, isOnline, user?.uid, vaultLocked]);
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
       const current = syncActiveRef.current;
-      if (state === "active" && current.uid && current.online) void drainOfflineQueue(current.uid).catch(() => {});
+      if (state === 'background') ProtectedStorage.lock();
+      else if (state === 'active' && current.uid && current.online && !ProtectedStorage.isLocked()) void drainOfflineQueue(current.uid).catch(() => {});
     });
     return () => subscription.remove();
   }, [drainOfflineQueue]);
@@ -4464,6 +4526,10 @@ export default function App() {
 
   function openSettings() {
     setSettingsVisible(true);
+  }
+  function openTrustControl(mode, invoice) {
+    setTrustMode(mode); setTrustInvoiceId(invoice?.id || ''); setTrustGeneration(previous => previous + 1);
+    setSettingsVisible(false); setActionInvoice(null); setTrustVisible(true);
   }
 
   function closeSettings() {
@@ -4506,7 +4572,7 @@ export default function App() {
       setInvoiceError(t("invoice_save_error"));
       return;
     }
-    const amountValue = Number(invoiceAmount);
+    const amountValue = RecordVersion.parseAmount(invoiceAmount);
     if (!Number.isFinite(amountValue) || amountValue <= 0) {
       setInvoiceError(t("invoice_save_error"));
       return;
@@ -4580,7 +4646,7 @@ export default function App() {
         await offlineQueueEngine.edit(user.uid, (queue) => {
           const pending = queue.some((item) => !item.dispatched && item.type === "addInvoice" && item.localId === invoiceId);
           const remaining = queue.filter((item) => !(!item.dispatched && item.type === "addInvoice" && item.localId === invoiceId));
-          if (!pending) remaining.push({ type: "deleteInvoice", id: invoiceId });
+        if (!pending) remaining.push({ type: "deleteInvoice", id: invoiceId, baseSnapshot: RecordVersion.snapshot(invoices.find(invoice => invoice.id === invoiceId) || {}) });
           return remaining;
         });
         if (auth.currentUser?.uid !== user.uid) return false;
@@ -4630,7 +4696,7 @@ export default function App() {
         await offlineQueueEngine.edit(user.uid, (queue) => {
           const pending = queue.find((item) => !item.dispatched && item.type === "addInvoice" && item.localId === invoice.id);
           if (pending) pending.data = { ...pending.data, ...serializeForCache(patch) };
-          else queue.push({ type: "updateInvoice", id: invoice.id, data: serializeForCache(patch), baseUpdatedAt: serializeForCache(invoice.updatedAt) });
+        else queue.push({ type: "updateInvoice", id: invoice.id, data: serializeForCache(patch), baseUpdatedAt: serializeForCache(invoice.updatedAt), baseSnapshot: RecordVersion.snapshot(invoice) });
           return queue;
         });
         if (auth.currentUser?.uid !== user.uid) return false;
@@ -4665,31 +4731,6 @@ export default function App() {
       return;
     }
     openExternal(url);
-  }
-
-  async function handleSaveReminder() {
-    if (!actionInvoice || !user?.uid || !isOnline) return;
-    try {
-      const normalized = String(reminderInput || "").trim().replace(" ", "T");
-      const remindAt = new Date(normalized);
-      if (Number.isNaN(remindAt.getTime()) || remindAt.getTime() <= Date.now()) {
-        setSyncMessage(t("reminder_placeholder"));
-        return;
-      }
-      await addDoc(collection(firestore, "users", user.uid, "reminders"), {
-        invoiceId: actionInvoice.id,
-        company: actionInvoice.company || "",
-        amount: Number(actionInvoice.amount) || 0,
-        currency: actionInvoice.currency || "RON",
-        remindAt,
-        status: "scheduled",
-        createdAt: serverTimestamp(),
-      });
-      if (!await patchInvoiceFromAction(actionInvoice, { reminderAt: remindAt })) return;
-      setSyncMessage(t("reminder_saved"));
-      setReminderInput("");
-      setActionInvoice(null);
-    } catch (_) { setSyncMessage(t("invoice_save_error")); }
   }
 
   async function openSourceHub() {
@@ -5293,11 +5334,31 @@ export default function App() {
     return t("invoice_status_unpaid");
   }
 
+  if (vaultLocked) {
+    return (
+      <SafeAreaView onTouchStart={() => { localActivityRef.current = Date.now(); }} style={[styles.safe, { direction: lang === 'ar' ? 'rtl' : 'ltr' }]}>
+        <View style={[styles.card, { margin: 24, gap: 16 }]}>
+          <Text accessibilityRole="header" style={styles.cardTitle}>{t('vault_title')}</Text>
+          {vaultError ? <Text accessibilityLiveRegion="polite" style={styles.mutedText}>{t('vault_error')}</Text> : null}
+          <TouchableOpacity accessibilityRole="button" style={styles.ghostButton} disabled={vaultOpening}
+            onPress={async () => {
+              setVaultOpening(true); setVaultError(false);
+              try { await ProtectedStorage.open(t('vault_unlock')); }
+              catch (_) { setVaultError(true); }
+              finally { setVaultOpening(false); }
+            }}>
+            <Text style={styles.ghostButtonText}>{t('vault_unlock')}</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   if (showSplash) {
     return (
       <LinearGradient colors={theme.background} style={styles.app}>
         <StatusBar style={theme.statusBar} />
-        <SafeAreaView style={[styles.safe, { direction: lang === "ar" ? "rtl" : "ltr" }]}>
+        <SafeAreaView onTouchStart={() => { localActivityRef.current = Date.now(); }} style={[styles.safe, { direction: lang === "ar" ? "rtl" : "ltr" }]}>
           <View style={styles.splashContainer}>
             <Animated.View style={{ opacity: splashOpacity, transform: [{ scale: splashScale }] }}>
               <View style={styles.splashPanel}>
@@ -5322,7 +5383,7 @@ export default function App() {
     return (
       <LinearGradient colors={theme.background} style={styles.app}>
         <StatusBar style={theme.statusBar} />
-        <SafeAreaView style={[styles.safe, { direction: lang === "ar" ? "rtl" : "ltr" }]}>
+        <SafeAreaView onTouchStart={() => { localActivityRef.current = Date.now(); }} style={[styles.safe, { direction: lang === "ar" ? "rtl" : "ltr" }]}>
           <KeyboardAvoidingView
             style={styles.flex}
             behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -5503,7 +5564,7 @@ export default function App() {
   return (
     <LinearGradient colors={theme.background} style={styles.app}>
       <StatusBar style={theme.statusBar} />
-      <SafeAreaView style={[styles.safe, { direction: lang === "ar" ? "rtl" : "ltr" }]}>
+      <SafeAreaView onTouchStart={() => { localActivityRef.current = Date.now(); }} style={[styles.safe, { direction: lang === "ar" ? "rtl" : "ltr" }]}>
         <ScrollView contentContainerStyle={styles.appScroll}>
           <View style={[styles.appHeader, compactHeader && styles.appHeaderCompact]}>
             <LinearGradient
@@ -5810,10 +5871,16 @@ export default function App() {
                   <Text style={styles.ghostButtonText}>{t("sync_retry")}</Text>
                 </TouchableOpacity>
               ) : null}
+              <TouchableOpacity accessibilityRole="button" style={styles.ghostButton} onPress={() => openTrustControl('sync')}>
+                <Text style={styles.ghostButtonText}>{t('sync_center')}</Text>
+              </TouchableOpacity>
             </View>
             <TextInput style={styles.input} value={invoiceSearch} onChangeText={setInvoiceSearch}
               placeholder={t("invoice_search_placeholder")} placeholderTextColor={theme.textMuted}
               accessibilityLabel={t("invoice_search_label")} autoCorrect={false} returnKeyType="search" />
+            <TouchableOpacity accessibilityRole="button" style={styles.ghostButton} onPress={() => openTrustControl('search')}>
+              <Text style={styles.ghostButtonText}>{t('invoice_search_label')}</Text>
+            </TouchableOpacity>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled"
               contentContainerStyle={styles.invoiceFilters}>
               {["all", "unpaid", "overdue", "paid"].map((status) => (
@@ -5996,6 +6063,11 @@ export default function App() {
           </View>
         </ScrollView>
 
+        <TrustPanel key={`${user.uid}:${trustMode}:${trustGeneration}`} mode={trustMode} uid={user.uid} visible={trustVisible} setDensity={changeDensity}
+          invoiceId={trustInvoiceId} invoices={workspaceInvoices} t={t} styles={styles} close={() => setTrustVisible(false)}
+          call={callTrustControl} queue={() => getOfflineQueue(user.uid)} edit={transform => offlineQueueEngine.edit(user.uid, transform)}
+          sync={() => drainOfflineQueue(user.uid, true)} refreshInvoice={refreshTrustInvoice} openInvoice={invoice => setActionInvoice(invoice)} />
+
         <Modal
           transparent
           visible={!!actionInvoice}
@@ -6053,14 +6125,7 @@ export default function App() {
                   <TouchableOpacity style={[styles.ghostButtonWide, styles.ghostButtonDanger]} onPress={() => handleOfficialAction("cancel")}>
                     <Text style={[styles.ghostButtonText, styles.ghostButtonTextDanger]}>{t("action_cancel")}</Text>
                   </TouchableOpacity>
-                  <TextInput
-                    style={styles.input}
-                    placeholder={t("reminder_placeholder")}
-                    placeholderTextColor={theme.placeholder}
-                    value={reminderInput}
-                    onChangeText={setReminderInput}
-                  />
-                  <TouchableOpacity style={styles.ghostButtonWide} onPress={handleSaveReminder}>
+                  <TouchableOpacity style={styles.ghostButtonWide} onPress={() => openTrustControl('reminders', actionInvoice)}>
                     <Text style={styles.ghostButtonText}>{t("action_reminder")}</Text>
                   </TouchableOpacity>
                 </ScrollView>
@@ -6147,6 +6212,9 @@ export default function App() {
                   ))}
                   <TouchableOpacity style={styles.ghostButtonWide} onPress={toggleSensitivePreviews}>
                     <Text style={styles.ghostButtonText}>{sensitivePreviewsHidden ? `✓ ${t("vault_previews")}` : t("vault_previews")}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity accessibilityRole="button" style={styles.ghostButtonWide} onPress={() => ProtectedStorage.lock()}>
+                    <Text style={styles.ghostButtonText}>{t('vault_lock_now')}</Text>
                   </TouchableOpacity>
                 </ScrollView>
               </View>
@@ -6243,6 +6311,12 @@ export default function App() {
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.ghostButtonWide} onPress={openPrivacyFromSettings}>
                     <Text style={styles.ghostButtonText}>{t("privacy_vault")}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity accessibilityRole="button" style={styles.ghostButtonWide} onPress={() => openTrustControl('collaboration')}>
+                    <Text style={styles.ghostButtonText}>{t('collaboration')}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity accessibilityRole="button" style={styles.ghostButtonWide} onPress={() => openTrustControl('reminders')}>
+                    <Text style={styles.ghostButtonText}>{t('action_reminder')}</Text>
                   </TouchableOpacity>
                   {mailAccountsList.length ? (
                     mailAccountsList.map(({ accountId, provider, data }) => (

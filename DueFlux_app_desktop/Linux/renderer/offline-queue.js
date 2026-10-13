@@ -30,6 +30,7 @@
           if (!item.dispatched && !item.dependsOn && previous && item.type !== "addInvoice" && previous.type !== "deleteInvoice") {
             item.dependsOn = previous.operationId;
             delete item.baseUpdatedAt;
+            delete item.baseSnapshot;
           }
           previousForInvoice.set(invoiceId, item);
         });
@@ -61,7 +62,13 @@
           const dispatched = currentQueue.find(function (current) { return current.operationId === item.operationId; });
           if (!dispatched || !active()) continue;
           // Server receipts make retry after a lost acknowledgement idempotent.
-          await apply(uid, dispatched);
+          try { await apply(uid, dispatched); }
+          catch (error) {
+            await edit(uid, function (queue) { return queue.map(function (current) {
+              return current.operationId === item.operationId ? Object.assign({}, current, { lastError: String(error.code || 'unavailable').slice(0, 80) }) : current;
+            }); });
+            throw error;
+          }
           await edit(uid, function (queue) { return queue.filter(function (current) {
             return current.operationId !== item.operationId;
           }); });

@@ -34,6 +34,8 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           node --test scripts/test-mobile-data.js
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node --test scripts/test-local-vault.cjs scripts/test-protected-storage.cjs scripts/test-release-evidence.cjs
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           node scripts/test-product-intelligence.js
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           node scripts/audit-i18n.mjs

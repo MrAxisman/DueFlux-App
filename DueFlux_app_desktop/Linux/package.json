@@ -38,6 +38,7 @@
     },
     "files": [
       "main.js",
+      "local-vault.cjs",
       "preload.js",
       "renderer/**/*",
       "package.json"

@@ -1,4 +1,16 @@
 const { contextBridge, ipcRenderer } = require("electron");
+contextBridge.exposeInMainWorld('DueFluxVault', {
+  status: () => ipcRenderer.invoke('vault:status'),
+  unlock: password => ipcRenderer.invoke('vault:unlock', password),
+  get: key => ipcRenderer.invoke('vault:get', key),
+  put: (key, value) => ipcRenderer.invoke('vault:put', key, value),
+  lock: () => ipcRenderer.invoke('vault:lock'),
+  onLock: handler => {
+    const listener = () => handler();
+    ipcRenderer.on('vault:locked', listener);
+    return () => ipcRenderer.removeListener('vault:locked', listener);
+  },
+});
 
 contextBridge.exposeInMainWorld("DueFlux", {
   getVersion: () => ipcRenderer.invoke("app:getVersion"),

@@ -8,10 +8,14 @@ const languages = ['ro', 'hu', 'de', 'fr', 'en', 'it', 'tr', 'zh', 'ar', 'ru', '
 const packs = require('../DueFlux_app_mobile/expo/featureLocales');
 const firebaseStub = `(() => {
   const fail = () => { throw new Error('Cloud access forbidden in UI tests'); };
-  const auth = { currentUser: null, onAuthStateChanged: () => () => {}, signOut: fail };
+  const auth = { currentUser: null, setPersistence: () => Promise.resolve(), onAuthStateChanged: () => () => {}, signOut: fail };
   const db = { enablePersistence: () => Promise.resolve(), collection: fail };
   const authFactory = () => auth;
-  authFactory.Auth = { Persistence: { LOCAL: 'local' } };
+  authFactory.Auth = { Persistence: { LOCAL: 'local', NONE: 'none' } };
+  const records = {};
+  window.DueFluxVault = { status: async () => ({ available: true, configured: false }),
+    unlock: async () => records, get: async key => records[key] ?? null,
+    put: async (key, value) => { records[key] = value; }, lock: async () => {}, onLock: () => {} };
   window.firebase = { initializeApp: () => ({}), auth: authFactory, firestore: () => db,
     app: () => ({ functions: () => ({ httpsCallable: fail }) }) };
 })();`;
@@ -42,6 +46,12 @@ const firebaseStub = `(() => {
       page.on('pageerror', error => errors.push(error.message));
       await page.goto(base);
       await page.waitForFunction(() => typeof showAppScreen === 'function');
+      await page.locator('#local-password').fill('test-only-password');
+      await page.locator('#local-password-confirm').fill('test-only-password');
+      await page.locator('#local-unlock-button').click();
+      await page.waitForFunction(() => !DueFluxLocalStore.isLocked());
+      // Unlock completes before asynchronous preference/handler initialization.
+      await page.waitForFunction(() => document.documentElement.dataset.appReady === 'true');
       await page.evaluate(lang => {
         clearTimeout(splashTransitionTimer); splashTransitioned = true; forceLoginOnLaunch = false;
         planFromClaims = 'basic';
@@ -63,7 +73,12 @@ const firebaseStub = `(() => {
       assert.equal(await page.locator('#device-sync-retry').isVisible(), false, 'No retry button without pending changes'); checks++;
       const beforeSearch = await page.locator('#tbl-invoices').textContent();
       await page.locator('#invoice-search').fill('does-not-exist');
-      await page.waitForFunction(expected => document.querySelector('#tbl-invoices').textContent.includes(expected), packs[lang].search_empty);
+      try { await page.waitForFunction(expected => document.querySelector('#tbl-invoices').textContent.includes(expected), packs[lang].search_empty); }
+      catch (error) {
+        console.error('Search initialization diagnostics', await page.evaluate(() => ({ language: currentLang, query: invoiceSearchQuery,
+          ready: document.documentElement.dataset.appReady, rowCount: document.querySelectorAll('#tbl-invoices tr').length })), errors);
+        throw error;
+      }
       assert.notEqual(await page.locator('#tbl-invoices').textContent(), beforeSearch); checks++;
       await page.locator('#invoice-search').fill('');
       await page.locator('#btn-settings').click();
@@ -91,7 +106,47 @@ const firebaseStub = `(() => {
       }
       await page.evaluate(() => setThemeMode('light', false));
       assert.equal(await page.locator('html').getAttribute('data-theme'), 'light'); checks++;
+      await page.keyboard.press('Control+k');
+      await page.locator('#trust-control-backdrop:not(.hidden)').waitFor();
+      assert.equal(await page.locator('#trust-control-title').textContent(), packs[lang].invoice_search_label); checks++;
+      assert.equal(await page.locator('#trust-control-content img').count(), 0); checks++;
+      await page.keyboard.press('Escape');
       if (lang === 'en') {
+        await page.evaluate(() => {
+          window.__trustCalls = [];
+          callFunctionWithAuth = async (_, payload) => {
+            window.__trustCalls.push(payload);
+            const invoice = { id: 'safe-id', company: '<img>Fixture utility', amount: 120, currency: 'RON', status: 'unpaid', revision: 'reviewed-revision' };
+            if (payload.action === 'listWorkspaces') return { workspaces: [{ ownerUid: auth.currentUser.uid, space: 'home', name: 'Home' }] };
+            if (payload.action === 'workspace') return { role: 'owner', ownerUid: auth.currentUser.uid, space: 'home', invoices: [invoice], members: [], approvals: [], audit: [] };
+            if (payload.action === 'syncStatus') return { receipts: [] };
+            if (payload.action === 'listReminders') return { reminders: [{ id: 'reminder', company: 'Utility', status: 'sent', remindAt: '2026-10-13T14:00:00Z' }] };
+            return { ok: true };
+          };
+          DueFluxTrustControls.open('search');
+        });
+        await page.locator('#trust-control-content .trust-field input').nth(0).fill('energie');
+        await page.locator('#trust-control-content .trust-field input').nth(1).fill('Utilities');
+        await page.getByRole('button', { name: packs.en.save_filter, exact: true }).click();
+        await page.getByRole('button', { name: 'Utilities', exact: true }).waitFor();
+        assert.equal(await page.evaluate(() => JSON.parse(DueFluxLocalStore.getItem('df_saved_filters'))['ui-test'][0].query), 'energie'); checks++;
+        await page.locator('#trust-control-content select').selectOption('compact');
+        assert.equal(await page.evaluate(() => document.body.classList.contains('df-density-compact')), true); checks++;
+        await page.locator('#trust-control-content select').selectOption('comfortable');
+        await page.keyboard.press('Escape');
+        await page.evaluate(() => DueFluxTrustControls.open('collaboration'));
+        await page.locator('.trust-selection').waitFor();
+        assert.deepEqual(await page.locator('#trust-control-content select').nth(1).locator('option').evaluateAll(nodes => nodes.map(node => node.value)), ['member']); checks++;
+        assert.equal(await page.locator('#trust-control-content img').count(), 0); checks++;
+        await page.locator('.trust-selection input').check();
+        page.once('dialog', dialog => dialog.dismiss());
+        await page.getByRole('button', { name: packs.en.bulk_paid }).click();
+        assert.equal(await page.evaluate(() => window.__trustCalls.some(call => call.action === 'bulkPayment')), false, 'Cancelling bulk confirmation cannot dispatch payment'); checks++;
+        await page.keyboard.press('Escape');
+        await page.evaluate(() => DueFluxTrustControls.open('reminders'));
+        await page.waitForFunction(() => document.querySelector('#trust-control-content').textContent.includes('Sent'));
+        assert(!await page.locator('#trust-control-content').textContent().then(text => text.includes('Delivered')), 'Provider acceptance is not proof of delivery'); checks++;
+        await page.keyboard.press('Escape');
         await page.evaluate(async () => {
           Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
           setOnlineState(false);
@@ -107,12 +162,12 @@ const firebaseStub = `(() => {
           openInvoiceModal();
           document.getElementById('inv-company').value = 'Not saved';
           document.getElementById('inv-amount').value = '20';
-          const original = Storage.prototype.setItem;
-          Storage.prototype.setItem = function (key, value) {
+          const original = DueFluxVault.put;
+          DueFluxVault.put = async function (key, value) {
             if (key === getOfflineQueueKey(currentUser.uid)) throw new Error('Storage is full');
-            return original.call(this, key, value);
+            return original(key, value);
           };
-          try { await saveInvoiceFromModal(); } finally { Storage.prototype.setItem = original; }
+          try { await saveInvoiceFromModal(); } finally { DueFluxVault.put = original; }
         });
         assert.equal(await page.locator('#modal-backdrop').isVisible(), true, 'Failed offline save must keep the editor open'); checks++;
         assert.equal(await page.evaluate(() => getOfflineQueue(currentUser.uid).length), 1, 'Failed write must not pretend to persist'); checks++;
@@ -121,16 +176,33 @@ const firebaseStub = `(() => {
         await page.evaluate(async () => {
           Object.defineProperty(navigator, 'onLine', { value: true, configurable: true });
           const key = getOfflineQueueKey(currentUser.uid);
-          const saved = localStorage.getItem(key);
-          localStorage.setItem(key, '{broken');
+          const saved = DueFluxLocalStore.getItem(key);
+          await DueFluxLocalStore.setItem(key, '{broken');
           await flushOfflineQueue();
-          localStorage.setItem(key, saved);
+          await DueFluxLocalStore.setItem(key, saved);
           const original = callFunctionWithAuth;
           callFunctionWithAuth = async () => ({ ok: true });
           try { await flushOfflineQueue(); } finally { callFunctionWithAuth = original; }
         });
         assert.equal(await page.evaluate(() => getOfflineQueue(currentUser.uid).length), 0, 'A failed read must not latch sync forever'); checks++;
         assert.equal(await page.locator('#device-sync-status').textContent(), packs.en.sync_ready); checks++;
+        const readonly = await page.evaluate(async () => {
+          const uid = currentUser.uid;
+          await DueFluxLocalStore.setItem('df_active_account', JSON.stringify({ uid, email: currentUser.email }));
+          await DueFluxLocalStore.setItem(getOfflineCacheKey(uid), JSON.stringify({ profile: currentUser, invoices: serializeForOfflineCache(invoices) }));
+          auth.currentUser = null; Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
+          handleSignedOut(true);
+          let rejected = false;
+          try { await queueOfflineMutation({ type: 'deleteInvoice', id: 'cloud-invoice' }); } catch (_) { rejected = true; }
+          return { readonly: localReadOnly, rejected, count: invoices.length };
+        });
+        assert.equal(readonly.readonly, true); checks++;
+        assert.equal(readonly.rejected, true); checks++;
+        assert(readonly.count > 0); checks++;
+        await page.evaluate(() => DueFluxLocalStore.lock());
+        assert.equal(await page.locator('#local-lock').isVisible(), true); checks++;
+        assert.equal(await page.evaluate(() => invoices.length), 0, 'Lock clears displayed invoice state'); checks++;
+        assert.equal(await page.evaluate(() => document.getElementById('app-screen').inert), true); checks++;
       }
       if (process.env.DUEFLUX_UI_SCREENSHOTS && lang === 'ro') {
         await fs.mkdir(process.env.DUEFLUX_UI_SCREENSHOTS, { recursive: true });

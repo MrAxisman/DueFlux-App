@@ -10,15 +10,26 @@
     />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' https://www.gstatic.com; connect-src 'self' https: wss:; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; object-src 'none'; base-uri 'self'"
+      content="default-src 'self'; script-src 'self' https://www.gstatic.com; connect-src 'self' https: wss:; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; frame-src https://storage.googleapis.com; font-src 'self' data:; object-src 'none'; base-uri 'self'"
     />
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
+    <div id="local-lock" class="local-lock" role="dialog" aria-modal="true" aria-labelledby="local-lock-title">
+      <form id="local-unlock-form" class="local-lock-card">
+        <h2 id="local-lock-title">Privacy Vault</h2>
+        <p id="local-password-hint"></p>
+        <input id="local-password" type="password" autocomplete="current-password" minlength="8" maxlength="256" required />
+        <input id="local-password-confirm" type="password" autocomplete="new-password" minlength="8" maxlength="256" />
+        <p id="local-lock-error" role="alert"></p>
+        <button id="local-unlock-button" class="primary-btn" type="submit">Unlock</button>
+      </form>
+    </div>
     <div id="offline-banner" class="offline-banner hidden">
       <div class="dot"></div>
       <p id="offline-text">Internet connection required. DueFlux is online-only.</p>
     </div>
+    <p id="legacy-cache-warning" class="legacy-cache-warning hidden" role="status"></p>
 
     <!-- SPLASH / INTRO -->
     <div id="splash" class="screen splash-screen">
@@ -198,7 +209,7 @@
               <div class="hero-pills">
                 <span id="hero-pill-sync" class="hero-pill">Auto sync active</span>
                 <span id="hero-pill-status" class="hero-pill">Status automation active</span>
-                <span id="hero-pill-cloud" class="hero-pill">Cloud only</span>
+                <span id="hero-pill-cloud" class="hero-pill">Cloud + offline</span>
               </div>
             </div>
             <div class="app-hero-metrics">
@@ -389,6 +400,7 @@
               <p id="device-sync-status" role="status" aria-live="polite"></p>
             </div>
             <button id="device-sync-retry" class="ghost-btn small" type="button" hidden>Retry sync</button>
+            <button id="trust-sync-open" class="ghost-btn small" type="button" data-trust-control="sync">Sync center</button>
           </section>
 
           <div id="invoice-setup-panel" class="setup-panel">
@@ -584,6 +596,7 @@
                   <button id="df-action-payment" type="button" class="ghost-btn">Open official payment page</button>
                   <button id="df-action-cancel-subscription" type="button" class="ghost-btn danger">Stop subscription</button>
                   <button id="df-action-reminder" type="button" class="ghost-btn">Schedule reminder</button>
+                  <button id="trust-review-open" type="button" class="ghost-btn" data-trust-control="review">Review source document</button>
                 </div>
               </section>
             </div>
@@ -644,11 +657,22 @@
               <input id="df-vault-previews" type="checkbox" checked />
               <span id="df-vault-previews-label">Hide sensitive message previews by default</span>
             </label>
+            <button id="df-vault-lock" type="button" class="ghost-btn">Lock now</button>
           </div>
         </div>
       </div>
 
       <!-- CONFIRM MODAL -->
+      <div id="trust-control-backdrop" class="modal-backdrop hidden">
+        <section class="modal trust-controls-modal">
+          <div class="modal-header">
+            <h3 id="trust-control-title"></h3>
+            <button id="trust-control-close" class="icon-btn small" type="button">x</button>
+          </div>
+          <p id="trust-control-status" role="status" aria-live="polite"></p>
+          <div id="trust-control-content" class="modal-body"></div>
+        </section>
+      </div>
       <div id="confirm-backdrop" class="modal-backdrop hidden">
         <div class="modal confirm-modal">
           <div class="modal-header">
@@ -1138,6 +1162,8 @@
               <button id="settings-privacy-vault" type="button" class="ghost-btn small">
                 Privacy Vault
               </button>
+              <button id="trust-reminders-open" type="button" class="ghost-btn small" data-trust-control="reminders">Reminders</button>
+              <button id="trust-team-open" type="button" class="ghost-btn small" data-trust-control="collaboration">Collaboration</button>
             </div>
             <p id="settings-email-status" class="small muted"></p>
           </div>
@@ -1339,6 +1365,9 @@
     <script src="feature-locales.js"></script>
     <script src="product-intelligence.js"></script>
     <script src="offline-queue.js"></script>
+    <script src="record-version.js"></script>
+    <script src="protected-storage.js"></script>
+    <script src="trust-controls.js"></script>
     <script src="dialog-accessibility.js"></script>
     <script src="app.js"></script>
   </body>
