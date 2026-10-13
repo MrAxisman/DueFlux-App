@@ -100,12 +100,15 @@ const firebaseStub = `(() => {
         for (const width of [390, 768, 1440]) {
           await page.setViewportSize({ width, height: 850 });
           await page.evaluate(() => { document.querySelector('.app-main').scrollTop = 0; });
+          // CDP resizing is asynchronous; compare boxes only after the responsive layout settles.
+          await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
           const box = await page.locator('.app-hero').boundingBox();
           const header = await page.locator('.app-header').boundingBox();
           const metric = await page.locator('.hero-metric').last().boundingBox();
           assert(box && box.x >= 0 && box.x + box.width <= width + 1, `Hero overflow ${lang}/${theme}/${width}`); checks++;
           assert(header.y + header.height + 12 <= box.y, `Header covers hero ${lang}/${theme}/${width}`); checks++;
-          assert(metric.y + metric.height <= box.y + box.height - 12, `Metric clips hero ${lang}/${theme}/${width}`); checks++;
+          assert(metric.y + metric.height <= box.y + box.height - 12,
+            `Metric clips hero ${lang}/${theme}/${width}: ${JSON.stringify({ box, metric })}`); checks++;
           assert.equal(await page.locator('.app-main').evaluate(main => main.scrollWidth <= main.clientWidth + 1), true,
             `Dashboard horizontal overflow ${lang}/${theme}/${width}`); checks++;
           if (process.env.DUEFLUX_UI_SCREENSHOTS && lang === 'ro' && width !== 768) {
