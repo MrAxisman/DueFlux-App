@@ -20,13 +20,10 @@ const auth = firebase.auth();
 const firestore = firebase.firestore();
 const functions = firebase.app().functions("us-central1");
 
-if (firestore && typeof firestore.enablePersistence === "function") {
-  firestore.enablePersistence({ synchronizeTabs: true }).catch(function (err) {
-    console.warn("firestore persistence", err && err.code ? err.code : err);
-  });
-}
+// Cloud SDK data stays in memory; only the protected application cache is persisted.
 
 let currentUser = null;
+let localReadOnly = false;
 let currentLang = "en";
 let planFromClaims = null;
 let profileUnsub = null;
@@ -3382,7 +3379,7 @@ function notifyUser(message, variant) {
 function setOnlineState(isOnline) {
   const banner = document.getElementById("offline-banner");
   const text = document.getElementById("offline-text");
-  const online = isOnline !== false;
+  const online = isOnline !== false && !localReadOnly;
   if (banner) {
     if (online) {
       banner.classList.add("hidden");
@@ -3460,7 +3457,7 @@ function serializeForOfflineCache(value) {
 function loadOfflineCache(uid) {
   if (!uid) return null;
   try {
-    return JSON.parse(localStorage.getItem(getOfflineCacheKey(uid)) || "null");
+    return JSON.parse(DueFluxLocalStore.getItem(getOfflineCacheKey(uid)) || "null");
   } catch (err) {
     console.error("offline cache read", err);
     return null;
@@ -3477,7 +3474,7 @@ function saveOfflineCache() {
     mailAccounts: serializeForOfflineCache(mailAccounts || {}),
   };
   try {
-    localStorage.setItem(getOfflineCacheKey(currentUser.uid), JSON.stringify(payload));
+    DueFluxLocalStore.setItem(getOfflineCacheKey(currentUser.uid), JSON.stringify(payload)).catch(function () {});
   } catch (err) {
     console.error("offline cache write", err);
   }
@@ -3530,7 +3527,7 @@ function applyOfflineCache(authUser) {
 function getOfflineQueue(uid) {
   if (!uid) return [];
   try {
-    const parsed = JSON.parse(localStorage.getItem(getOfflineQueueKey(uid)) || "[]");
+    const parsed = JSON.parse(DueFluxLocalStore.getItem(getOfflineQueueKey(uid)) || "[]");
     if (!Array.isArray(parsed)) throw new Error("Invalid offline queue");
     return parsed;
   } catch (err) {
@@ -3539,10 +3536,10 @@ function getOfflineQueue(uid) {
   }
 }
 
-function setOfflineQueue(uid, queue) {
+async function setOfflineQueue(uid, queue) {
   if (!uid) return;
   try {
-    localStorage.setItem(getOfflineQueueKey(uid), JSON.stringify(queue || []));
+    await DueFluxLocalStore.setItem(getOfflineQueueKey(uid), JSON.stringify(queue || []));
   } catch (err) {
     console.error("offline queue write", err);
     throw err;
@@ -3550,7 +3547,9 @@ function setOfflineQueue(uid, queue) {
 }
 
 async function queueOfflineMutation(mutation) {
+  if (localReadOnly || DueFluxLocalStore.isLocked()) throw new Error('Read-only local session');
   if (!currentUser || !currentUser.uid || !mutation) return;
+  if (mutation.type !== 'addInvoice' && invoicesById.has(mutation.id)) mutation = Object.assign({}, mutation, { baseSnapshot: DueFluxRecordVersion.snapshot(invoicesById.get(mutation.id)) });
   await offlineQueueEngine.edit(currentUser.uid, function (queue) {
     return queue.concat(Object.assign({}, mutation, { queuedAt: new Date().toISOString() }));
   });
@@ -3614,8 +3613,9 @@ function hasQueuedInvoice(id) {
   return !!currentUser && getOfflineQueue(currentUser.uid).some(function (item) { return (item.id || item.localId) === id; });
 }
 
-async function flushOfflineQueue() {
-  if (!currentUser || !auth.currentUser || !isOnlineNow()) { refreshDeviceSyncUi(); return; }
+async function flushOfflineQueue(manual) {
+  if (!manual && window.DueFluxTrustControls?.isSyncOpen()) return;
+  if (!currentUser || !auth.currentUser || !isOnlineNow() || DueFluxLocalStore.isLocked()) { refreshDeviceSyncUi(); return; }
   const uid = auth.currentUser.uid;
   if (offlineSyncRequest && offlineSyncUid === uid) return offlineSyncRequest;
   offlineSyncUid = uid;
@@ -3624,7 +3624,7 @@ async function flushOfflineQueue() {
     deviceSyncPhase = getOfflineQueue(uid).length ? "syncing" : "ready";
     refreshDeviceSyncUi();
     const active = function () {
-      return !!auth.currentUser && auth.currentUser.uid === uid && isOnlineNow();
+      return !!auth.currentUser && auth.currentUser.uid === uid && isOnlineNow() && !DueFluxLocalStore.isLocked() && (manual || !window.DueFluxTrustControls?.isSyncOpen());
     };
     let remaining;
     do { remaining = await offlineQueueEngine.flush(uid, active); } while (remaining && active());
@@ -4008,6 +4008,12 @@ function setLanguage(lang, save) {
   refreshVerificationUi();
   // if legal modal is open, refresh text
   refreshLegalModalTextsIfOpen();
+  setText('trust-sync-open', t('sync_center'));
+  setText('trust-reminders-open', t('action_reminder'));
+  setText('trust-team-open', t('collaboration'));
+  setText('trust-review-open', t('review_document'));
+  setText('legacy-cache-warning', t('legacy_cache_warning'));
+  setText('df-vault-lock', t('vault_lock_now'));
   refreshDeviceSyncUi();
   if (window.DueFluxDialogs) window.DueFluxDialogs.refresh();
   if (Array.isArray(invoices)) {
@@ -4167,7 +4173,7 @@ function applyLanguageForAppTexts() {
   setText("hero-eyebrow", t("hero_eyebrow"));
   setText("hero-title", t("hero_title"));
   setText("hero-subtitle", t("hero_subtitle"));
-  setText("hero-pill-cloud", t("hero_pill_cloud"));
+  setText("hero-pill-cloud", t("hero_cloud_offline"));
   setText("hero-metric-month-label", t("hero_metric_month_label"));
   setText("hero-metric-all-label", t("hero_metric_all_label"));
   setText("hero-metric-sync-label", t("hero_metric_sync_label"));
@@ -4336,7 +4342,7 @@ function runSplashSequence() {
 }
 
 function hideSplashShowLogin() {
-  const shouldShowApp = !!auth.currentUser && !forceLoginOnLaunch;
+  const shouldShowApp = localReadOnly || (!!auth.currentUser && !forceLoginOnLaunch);
   if (splashTransitioned) {
     if (shouldShowApp) {
       showAppScreen();
@@ -4732,14 +4738,14 @@ function planLabel(plan) {
 
 function getStoredAccounts() {
   try {
-    return JSON.parse(localStorage.getItem("df_accounts") || "[]");
+    return JSON.parse(DueFluxLocalStore.getItem("df_accounts") || "[]");
   } catch (e) {
     return [];
   }
 }
 
 function saveStoredAccounts(list) {
-  localStorage.setItem("df_accounts", JSON.stringify(list));
+  DueFluxLocalStore.setItem("df_accounts", JSON.stringify(list)).catch(function () {});
 }
 
 function upsertAccountFromUser(user) {
@@ -4888,6 +4894,10 @@ async function handleLogin() {
 }
 
 async function startSession(authUser) {
+  if (DueFluxLocalStore.isLocked()) return;
+  DueFluxTrustControls.close();
+  localReadOnly = false;
+  await DueFluxLocalStore.setItem('df_active_account', JSON.stringify({ uid: authUser.uid, email: authUser.email || '' }));
   if (isOnlineNow()) {
     await loadPlanClaims(authUser);
     await ensureUserDoc(authUser);
@@ -4940,7 +4950,8 @@ async function startSession(authUser) {
   setLoginMessage("", false);
 }
 
-function handleSignedOut() {
+function handleSignedOut(allowCached = false) {
+  DueFluxTrustControls.close();
   clearAutoMailSyncScheduler();
   clearExchangeRatesScheduler();
   clearSubscriptions();
@@ -4965,6 +4976,19 @@ function handleSignedOut() {
   phoneInboxInfoLastFetchedAt = 0;
   autoPhoneSyncRunning = false;
   autoPhoneSyncLastRunAt = 0;
+  localReadOnly = false;
+  if (allowCached && !isOnlineNow() && !DueFluxLocalStore.isLocked()) {
+    try {
+      const account = JSON.parse(DueFluxLocalStore.getItem('df_active_account') || 'null');
+      if (account?.uid) currentUser = { uid: account.uid, email: account.email || '', plan: 'basic' };
+      if (account?.uid && applyOfflineCache(account)) {
+        localReadOnly = true; forceLoginOnLaunch = false;
+        setOnlineState(false); showAppScreen();
+        notifyUser(t('vault_readonly'), 'info'); return;
+      }
+    } catch (_) { /* Corrupt local records never establish an authenticated session. */ }
+    currentUser = null;
+  }
   scheduleInvoiceUiRefresh();
   hideSplashShowLogin();
   refreshVerificationUi();
@@ -4974,6 +4998,7 @@ function handleSignedOut() {
 }
 
 function logout() {
+  void DueFluxLocalStore.setItem('df_active_account', 'null').catch(() => {});
   if (auth && auth.currentUser) {
     auth.signOut().catch(function (err) {
       console.error("signOut", err);
@@ -5876,6 +5901,7 @@ function isInvoiceInSelectedMonth(inv) {
 
 function invoiceLooksLikeSubscription(inv) {
   if (!inv || typeof inv !== "object") return false;
+  if (inv.duplicateOf) return false;
   if (inv.recurring === true) return true;
   if (String(inv.invoiceType || "").toLowerCase() === "subscription") return true;
 
@@ -6137,6 +6163,7 @@ async function queueInvoiceUpdate(id, patch) {
     const pending = queue.find(function (item) { return !item.dispatched && item.type === "addInvoice" && item.localId === id; });
     if (pending) pending.data = Object.assign({}, pending.data, serializeForOfflineCache(patch));
     else queue.push({ type: "updateInvoice", id: id, data: serializeForOfflineCache(patch),
+      baseSnapshot: DueFluxRecordVersion.snapshot(invoice || {}),
       baseUpdatedAt: serializeForOfflineCache(invoice && invoice.updatedAt) });
     return queue;
   });
@@ -6642,29 +6669,10 @@ function openActiveInvoiceOfficialUrl(kind) {
   openWebsite(url);
 }
 
-async function saveActiveInvoiceReminder() {
-  const invoice = getActiveActionInvoice();
-  const input = document.getElementById("df-reminder-at");
-  if (!invoice || !input || !auth.currentUser) return;
-  const remindAt = new Date(input.value);
-  if (Number.isNaN(remindAt.getTime()) || remindAt.getTime() <= Date.now()) {
-    notifyUser(t("reminder_label"), "error");
-    return;
-  }
-  if (!ensureOnline()) return;
-  await firestore.collection("users").doc(auth.currentUser.uid).collection("reminders").add({
-    invoiceId: invoice.id,
-    company: invoice.company || "",
-    amount: Number(invoice.amount) || 0,
-    currency: invoice.currency || "RON",
-    remindAt: firebase.firestore.Timestamp.fromDate(remindAt),
-    status: "scheduled",
-    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-  });
-  await firestore.collection("users").doc(auth.currentUser.uid).collection("invoices").doc(invoice.id).set({ reminderAt: firebase.firestore.Timestamp.fromDate(remindAt) }, { merge: true });
-  notifyUser(t("reminder_saved"), "success");
-  const editor = document.getElementById("df-reminder-editor");
-  if (editor) editor.classList.add("hidden");
+function saveActiveInvoiceReminder() {
+  const id = activeActionInvoiceId;
+  closeInvoiceActionCenter(); DueFluxTrustControls.open('reminders', id);
+  return Promise.resolve();
 }
 
 function subscribeInvoiceReminders(authUser) {
@@ -7040,7 +7048,7 @@ async function deleteAllInvoices() {
         const unsentAdds = new Set(queue.filter(function (item) { return !item.dispatched && item.type === "addInvoice"; }).map(function (item) { return item.localId; }));
         const remaining = queue.filter(function (item) { return !unsentAdds.has(item.id || item.localId); });
         ids.filter(function (id) { return !unsentAdds.has(id); }).forEach(function (id) {
-          remaining.push({ type: "deleteInvoice", id: id, queuedAt: new Date().toISOString() });
+          remaining.push({ type: "deleteInvoice", id: id, baseSnapshot: DueFluxRecordVersion.snapshot(invoicesById.get(id) || {}), queuedAt: new Date().toISOString() });
         });
         return remaining;
       });
@@ -7264,7 +7272,7 @@ async function saveInvoiceFromModal() {
   const number = document.getElementById("inv-number").value.trim();
   const issue = document.getElementById("inv-issue").value;
   const due = document.getElementById("inv-due").value;
-  const amount = parseFloat(document.getElementById("inv-amount").value);
+  const amount = DueFluxRecordVersion.parseAmount(document.getElementById("inv-amount").value);
   const currency =
     document.getElementById("inv-currency").value.trim() || "RON";
   const status = document.getElementById("inv-status").value;
@@ -8883,7 +8891,76 @@ function refreshLegalModalTextsIfOpen() {
 
 /* ---------- INIT ---------- */
 
-window.addEventListener("load", function () {
+async function initializeLocalProtection() {
+  const lockScreen = document.getElementById('local-lock');
+  const form = document.getElementById('local-unlock-form');
+  const password = document.getElementById('local-password');
+  const confirmation = document.getElementById('local-password-confirm');
+  const message = document.getElementById('local-lock-error');
+  const button = document.getElementById('local-unlock-button');
+  setText('local-lock-title', t('vault_title'));
+  setText('local-password-hint', t('vault_password_hint'));
+  setText('df-vault-lock', t('vault_lock_now'));
+  setText('legacy-cache-warning', t('legacy_cache_warning'));
+  button.textContent = t('vault_unlock');
+  password.setAttribute('aria-label', t('login_password'));
+  confirmation.setAttribute('aria-label', t('login_password'));
+  let status;
+  try { status = await DueFluxLocalStore.status(); }
+  catch (_) { status = { available: false }; }
+  if (!status.available) { message.textContent = t('vault_unavailable'); button.disabled = true; }
+  confirmation.hidden = !!status.configured;
+  confirmation.required = !status.configured;
+  let firstUnlock;
+  const ready = new Promise(resolve => { firstUnlock = resolve; });
+  form.addEventListener('submit', async function (event) {
+    event.preventDefault();
+    if (!status.available || (!status.configured && password.value !== confirmation.value)) {
+      message.textContent = t('vault_error'); return;
+    }
+    button.disabled = true;
+    try {
+      await DueFluxLocalStore.open(password.value);
+      status.configured = true;
+      confirmation.hidden = true; confirmation.required = false;
+      password.value = ''; confirmation.value = ''; message.textContent = '';
+      lockScreen.classList.add('hidden');
+      document.querySelectorAll('#splash, #login-screen, #app-screen').forEach(screen => { screen.inert = false; });
+      const initial = firstUnlock; firstUnlock = null;
+      if (initial) initial();
+      else if (auth.currentUser) await startSession(auth.currentUser);
+      else handleSignedOut(true);
+    } catch (_) { message.textContent = t('vault_error'); }
+    finally { button.disabled = false; }
+  });
+  DueFluxLocalStore.subscribe(function (locked) {
+    if (!locked) return;
+    clearSubscriptions();
+    clearAutoMailSyncScheduler(); clearExchangeRatesScheduler();
+    currentUser = null; invoices = []; invoicesById.clear(); billingReferences = []; resetMailSyncState();
+    markInvoicesChanged(); scheduleInvoiceUiRefresh();
+    document.querySelectorAll('.modal-backdrop, .settings-backdrop').forEach(backdrop => backdrop.classList.add('hidden'));
+    lockScreen.classList.remove('hidden');
+    document.querySelectorAll('#splash, #login-screen, #app-screen').forEach(screen => { screen.inert = true; });
+    password.focus();
+  });
+  let activity = Date.now();
+  ['pointerdown', 'keydown', 'wheel'].forEach(name => document.addEventListener(name, () => { activity = Date.now(); }, { passive: true }));
+  setInterval(() => { if (!DueFluxLocalStore.isLocked() && Date.now() - activity >= 300000) DueFluxLocalStore.lock(); }, 15000);
+  password.focus();
+  return ready;
+}
+
+window.addEventListener("load", async function () {
+  setLanguage(loadLanguagePreference(), false);
+  await initializeLocalProtection();
+  document.getElementById('df-vault-lock').addEventListener('click', () => DueFluxLocalStore.lock());
+  await auth.setPersistence(firebase.auth.Auth.Persistence.NONE);
+  // Never erase a legacy SDK database: it may contain unacknowledged writes.
+  if (typeof indexedDB.databases === 'function') {
+    const legacy = (await indexedDB.databases()).some(database => String(database.name || '').startsWith('firestore/'));
+    if (legacy) document.getElementById('legacy-cache-warning').classList.remove('hidden');
+  }
   // theme
   initTheme();
   syncSettingsThemeChips(getThemeMode());
@@ -8914,6 +8991,7 @@ window.addEventListener("load", function () {
   // connectivity state
   document.getElementById("device-sync-retry").addEventListener("click", function () { void flushOfflineQueue(); });
   DueFluxDialogs.init({ closeLabel: function () { return t("modal_close"); }, close: {
+    'trust-control-backdrop': function () { DueFluxTrustControls.close(); },
     "settings-backdrop": closeSettings, "modal-backdrop": closeInvoiceModal,
     "confirm-backdrop": function () { closeConfirmDialog(false); },
     "df-action-backdrop": closeInvoiceActionCenter, "df-sources-backdrop": closeSourcesHub,
@@ -8922,6 +9000,20 @@ window.addEventListener("load", function () {
     "legal-backdrop": closeLegal, "update-prompt-backdrop": closeUpdatePrompt,
     "account-modal-backdrop": function () { document.getElementById("account-modal-backdrop").classList.add("hidden"); }
   } });
+  DueFluxTrustControls.init({ t: t, uid: () => auth.currentUser?.uid || currentUser?.uid, call: data => callFunctionWithAuth('appControl', data),
+    queue: () => getOfflineQueue(auth.currentUser?.uid || currentUser?.uid), edit: transform => offlineQueueEngine.edit(auth.currentUser.uid, transform),
+    invoices: getIntelligenceInvoices, activeInvoice: () => activeActionInvoiceId,
+    sync: () => flushOfflineQueue(true), openInvoice: openInvoiceActionCenter,
+    refreshInvoice: async id => {
+      const uid = auth.currentUser.uid;
+      const document = await firestore.collection('users').doc(uid).collection('invoices').doc(id).get({ source: 'server' });
+      if (auth.currentUser?.uid !== uid || DueFluxLocalStore.isLocked()) return;
+      if (document.exists) invoicesById.set(id, normalizeInvoiceDoc(document)); else invoicesById.delete(id);
+      invoices = DueFluxOfflineQueue.projectInvoices(Array.from(invoicesById.values()), getOfflineQueue(uid));
+      invoicesById = new Map(invoices.map(invoice => [invoice.id, invoice]));
+      markInvoicesChanged(); saveOfflineCache(); scheduleInvoiceUiRefresh();
+    },
+  });
   setOnlineState(navigator.onLine);
   window.addEventListener("online", function () {
     setOnlineState(true);
@@ -8938,6 +9030,7 @@ window.addEventListener("load", function () {
   });
 
   auth.onAuthStateChanged(function (authUser) {
+    if (DueFluxLocalStore.isLocked()) return;
     if (forceLoginOnLaunch) {
       forceLoginOnLaunch = false;
       if (authUser) {
@@ -8956,12 +9049,12 @@ window.addEventListener("load", function () {
             handleSignedOut();
           });
       } else {
-        handleSignedOut();
+        handleSignedOut(true);
       }
       return;
     }
     if (!authUser) {
-      handleSignedOut();
+      handleSignedOut(true);
       return;
     }
     authUser
@@ -9196,14 +9289,8 @@ window.addEventListener("load", function () {
   if (actionPayment) actionPayment.addEventListener("click", function () { openActiveInvoiceOfficialUrl("payment"); });
   if (actionCancelSubscription) actionCancelSubscription.addEventListener("click", function () { openActiveInvoiceOfficialUrl("cancel"); });
   if (actionReminder) actionReminder.addEventListener("click", function () {
-    const editor = document.getElementById("df-reminder-editor");
-    const input = document.getElementById("df-reminder-at");
-    if (input && !input.value) {
-      const next = new Date(Date.now() + 24 * 60 * 60 * 1000);
-      next.setMinutes(next.getMinutes() - next.getTimezoneOffset());
-      input.value = next.toISOString().slice(0, 16);
-    }
-    if (editor) editor.classList.toggle("hidden");
+    const id = activeActionInvoiceId;
+    closeInvoiceActionCenter(); DueFluxTrustControls.open('reminders', id);
   });
   if (reminderSave) reminderSave.addEventListener("click", function () { saveActiveInvoiceReminder().catch(function (err) { console.error("save reminder", err); notifyUser(t("invoice_save_error"), "error"); }); });
 

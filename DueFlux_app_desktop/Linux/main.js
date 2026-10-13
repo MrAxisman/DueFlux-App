@@ -1,9 +1,18 @@
-const { app, BrowserWindow, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, safeStorage, powerMonitor } = require("electron");
 const path = require("path");
 const log = require("electron-log");
+if (process.argv.includes('--smoke-test')) {
+  const testDirectory = path.join(app.getPath('temp'), 'dueflux-smoke-' + require('node:crypto').randomUUID());
+  require('node:fs').mkdirSync(testDirectory, { recursive: true });
+  app.setPath('userData', testDirectory);
+}
 
 let mainWindow = null;
 let autoUpdater = null;
+let localVault;
+const requireLocalSender = event => {
+  if (event.sender !== mainWindow?.webContents || event.senderFrame !== mainWindow?.webContents.mainFrame || !event.senderFrame?.url.startsWith('file://')) throw new Error('Invalid sender');
+};
 
 function openExternal(url) {
   try {
@@ -140,8 +149,13 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  localVault = require('./local-vault.cjs').createVault({ directory: path.join(app.getPath('userData'), 'protected-vault'), safeStorage });
   createWindow();
   initAutoUpdater();
+  powerMonitor.on('lock-screen', () => {
+    localVault.lock();
+    mainWindow?.webContents.send('vault:locked');
+  });
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -157,6 +171,11 @@ app.on("window-all-closed", () => {
 });
 
 ipcMain.handle("app:getVersion", () => app.getVersion());
+ipcMain.handle('vault:status', event => { requireLocalSender(event); return localVault.status(); });
+ipcMain.handle('vault:unlock', (event, password) => { requireLocalSender(event); return localVault.unlock(password); });
+ipcMain.handle('vault:get', (event, key) => { requireLocalSender(event); return localVault.get(key); });
+ipcMain.handle('vault:put', (event, key, value) => { requireLocalSender(event); return localVault.put(key, value); });
+ipcMain.handle('vault:lock', event => { requireLocalSender(event); localVault.lock(); });
 ipcMain.handle("reports:pdf", async (event, html) => {
   if (event.sender !== mainWindow?.webContents || typeof html !== "string" || html.length > 2 * 1024 * 1024) {
     throw new Error("Invalid report");

@@ -51,7 +51,21 @@
           "backgroundColor": "#0b1120",
           "imageWidth": 200
         }
-      ]
+      ],
+      [
+        "expo-secure-store",
+        {
+          "configureAndroidBackup": true,
+          "faceIDPermission": "Allow DueFlux to unlock protected local data using Face ID."
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow DueFlux to unlock protected local data using Face ID."
+        }
+      ],
+      "expo-notifications"
     ]
   }
 }

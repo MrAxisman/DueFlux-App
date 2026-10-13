@@ -61,6 +61,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Require reviewed public release evidence
+        run: node ../../scripts/check-release-evidence.cjs ${{ matrix.platform }}
+
       - name: Validate release version and signing
         env:
           RELEASE_VERSION: ${{ inputs.version }}

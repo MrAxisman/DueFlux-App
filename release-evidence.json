@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "sourceTrees": { "desktop": "", "mobile": "" },
+  "checks": {
+    "backendDeployed": false,
+    "legacyCacheReconciled": false,
+    "providerFlows": false,
+    "restoreDrill": false,
+    "accessibilityReview": false,
+    "languageReview": false,
+    "dependencyReview": false
+  },
+  "platforms": {
+    "windows": { "deviceTest": false, "signingReviewed": false },
+    "linux": { "deviceTest": false, "signingReviewed": false },
+    "macos": { "deviceTest": false, "signingReviewed": false },
+    "android": { "deviceTest": false, "signingReviewed": false },
+    "ios": { "deviceTest": false, "signingReviewed": false }
+  }
+}

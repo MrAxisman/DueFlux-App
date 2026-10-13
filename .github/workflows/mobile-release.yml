@@ -51,7 +51,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
           cache-dependency-path: DueFlux_app_mobile/expo/package-lock.json
 
@@ -61,8 +61,21 @@ jobs:
           token: ${{ secrets.EXPO_TOKEN }}
           eas-version: latest
 
+      - name: Require reviewed production release evidence
+        if: ${{ inputs.profile == 'production' }}
+        env:
+          PLATFORM: ${{ inputs.platform }}
+        run: |
+          if [ "$PLATFORM" = "all" ]; then PLATFORM="android,ios"; fi
+          node ../../scripts/check-release-evidence.cjs "$PLATFORM"
+
       - name: Install dependencies
         run: npm ci
+
+      - name: Validate mobile before building
+        run: |
+          npm run lint
+          npx expo export --platform android --platform ios
 
       - name: Verify EAS authentication
         run: npx eas whoami

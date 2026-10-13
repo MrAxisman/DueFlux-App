@@ -8,7 +8,7 @@
   "scripts": {
     "start": "npm --prefix DueFlux_app_desktop/Windows start",
     "start:mobile": "npm --prefix DueFlux_app_mobile/expo start",
-    "test": "node --test scripts/test-offline-queue.js scripts/test-mobile-data.js && node scripts/test-product-intelligence.js && node scripts/audit-i18n.mjs",
+    "test": "node --test scripts/test-offline-queue.js scripts/test-mobile-data.js scripts/test-local-vault.cjs scripts/test-protected-storage.cjs scripts/test-release-evidence.cjs && node scripts/test-product-intelligence.js && node scripts/audit-i18n.mjs",
     "test:desktop": "node scripts/test-electron.cjs",
     "sync:desktop": "node scripts/sync-desktop.mjs",
     "sync:cloud": "node scripts/sync-cloud-bundle.mjs",
