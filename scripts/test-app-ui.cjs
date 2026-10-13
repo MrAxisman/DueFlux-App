@@ -50,6 +50,8 @@ const firebaseStub = `(() => {
       await page.locator('#local-password-confirm').fill('test-only-password');
       await page.locator('#local-unlock-button').click();
       await page.waitForFunction(() => !DueFluxLocalStore.isLocked());
+      // Unlock completes before asynchronous preference/handler initialization.
+      await page.waitForFunction(() => document.documentElement.dataset.appReady === 'true');
       await page.evaluate(lang => {
         clearTimeout(splashTransitionTimer); splashTransitioned = true; forceLoginOnLaunch = false;
         planFromClaims = 'basic';
@@ -71,7 +73,12 @@ const firebaseStub = `(() => {
       assert.equal(await page.locator('#device-sync-retry').isVisible(), false, 'No retry button without pending changes'); checks++;
       const beforeSearch = await page.locator('#tbl-invoices').textContent();
       await page.locator('#invoice-search').fill('does-not-exist');
-      await page.waitForFunction(expected => document.querySelector('#tbl-invoices').textContent.includes(expected), packs[lang].search_empty);
+      try { await page.waitForFunction(expected => document.querySelector('#tbl-invoices').textContent.includes(expected), packs[lang].search_empty); }
+      catch (error) {
+        console.error('Search initialization diagnostics', await page.evaluate(() => ({ language: currentLang, query: invoiceSearchQuery,
+          ready: document.documentElement.dataset.appReady, rowCount: document.querySelectorAll('#tbl-invoices tr').length })), errors);
+        throw error;
+      }
       assert.notEqual(await page.locator('#tbl-invoices').textContent(), beforeSearch); checks++;
       await page.locator('#invoice-search').fill('');
       await page.locator('#btn-settings').click();

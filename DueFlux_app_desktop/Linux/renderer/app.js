@@ -9608,4 +9608,5 @@ window.addEventListener("load", async function () {
   splashStartedAt = Date.now();
   runSplashSequence();
   hideSplashShowLogin();
+  document.documentElement.dataset.appReady = 'true';
 });
