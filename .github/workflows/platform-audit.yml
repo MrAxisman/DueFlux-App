@@ -34,7 +34,7 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           node --test scripts/test-mobile-data.js
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          node --test scripts/test-local-vault.cjs scripts/test-protected-storage.cjs scripts/test-release-evidence.cjs
+          node --test scripts/test-local-vault.cjs scripts/test-protected-storage.cjs scripts/test-release-evidence.cjs scripts/test-ui-styles.cjs
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           node scripts/test-product-intelligence.js
           if ($LASTEXITCODE) { exit $LASTEXITCODE }

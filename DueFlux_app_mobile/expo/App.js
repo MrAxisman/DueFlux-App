@@ -16,7 +16,6 @@ import {
   SafeAreaView,
   Share,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
@@ -63,6 +62,7 @@ const OfflineQueue = require("./offlineQueue");
 const ProtectedStorage = require("./protectedStorage");
 const RecordVersion = require('./recordVersion');
 const NativeNotifications = require('./nativeNotifications');
+const { THEMES, createStyles } = require('./uiStyles');
 const featureLocales = require("./featureLocales");
 
 const LOGO = require("./assets/logo-dueflux.png");
@@ -1648,1190 +1648,12 @@ Object.keys(translations).forEach((code) => {
   };
 });
 
-const THEMES = {
-  dark: {
-    mode: "dark",
-    background: ["#060b16", "#040913"],
-    cardGradient: [
-      "rgba(53, 164, 255, 0.16)",
-      "rgba(91, 108, 255, 0.14)",
-      "rgba(9, 16, 31, 0.96)",
-    ],
-    glowTop: "rgba(53, 164, 255, 0.34)",
-    glowRight: "rgba(91, 108, 255, 0.3)",
-    text: "#eaf2ff",
-    textMuted: "#97a9c8",
-    textSoft: "#c8daf9",
-    textInverse: "#ffffff",
-    border: "rgba(122, 154, 198, 0.28)",
-    borderStrong: "rgba(122, 154, 198, 0.44)",
-    borderLight: "rgba(122, 154, 198, 0.2)",
-    surface: "rgba(10, 18, 35, 0.97)",
-    surfaceCard: "rgba(13, 24, 45, 0.92)",
-    surfaceCardAlt: "rgba(15, 27, 50, 0.84)",
-    surfaceHeader: "rgba(11, 20, 39, 0.9)",
-    surfaceSoft: "rgba(53, 164, 255, 0.08)",
-    inputBg: "rgba(9, 18, 35, 0.74)",
-    inputBorder: "rgba(122, 154, 198, 0.36)",
-    rowBg: "rgba(10, 20, 40, 0.6)",
-    overlay: "rgba(5, 11, 22, 0.72)",
-    accent: "#35a4ff",
-    accentStrong: "#5b6cff",
-    accentGradient: ["#35a4ff", "#4c57ff"],
-    accentGradientAlt: ["#35a4ff", "#5b6cff"],
-    accentSoft: "rgba(53, 164, 255, 0.16)",
-    accentBorder: "rgba(53, 164, 255, 0.52)",
-    danger: "#fda4af",
-    dangerBorder: "rgba(244, 63, 94, 0.36)",
-    dangerSoft: "rgba(244, 63, 94, 0.12)",
-    warning: "#f59e0b",
-    warningBorder: "rgba(245, 158, 11, 0.34)",
-    warningSoft: "rgba(245, 158, 11, 0.18)",
-    success: "#22c55e",
-    successBorder: "rgba(34, 197, 94, 0.34)",
-    successSoft: "rgba(34, 197, 94, 0.16)",
-    link: "#35a4ff",
-    placeholder: "#6f87ad",
-    shadow: "#0f172a",
-    statusBar: "light",
-  },
-  light: {
-    mode: "light",
-    background: ["#f8fbff", "#e9f1ff"],
-    cardGradient: [
-      "rgba(29, 124, 255, 0.12)",
-      "rgba(76, 87, 255, 0.08)",
-      "rgba(255, 255, 255, 0.96)",
-    ],
-    glowTop: "rgba(29, 124, 255, 0.2)",
-    glowRight: "rgba(76, 87, 255, 0.14)",
-    text: "#0c1a33",
-    textMuted: "#5c6e8b",
-    textSoft: "#44577a",
-    textInverse: "#ffffff",
-    border: "rgba(92, 110, 139, 0.24)",
-    borderStrong: "rgba(92, 110, 139, 0.38)",
-    borderLight: "rgba(92, 110, 139, 0.2)",
-    surface: "rgba(255, 255, 255, 0.98)",
-    surfaceCard: "rgba(255, 255, 255, 0.96)",
-    surfaceCardAlt: "rgba(245, 249, 255, 0.94)",
-    surfaceHeader: "rgba(255, 255, 255, 0.92)",
-    surfaceSoft: "rgba(29, 124, 255, 0.08)",
-    inputBg: "rgba(255, 255, 255, 0.94)",
-    inputBorder: "rgba(92, 110, 139, 0.34)",
-    rowBg: "rgba(235, 243, 255, 0.9)",
-    overlay: "rgba(15, 23, 42, 0.35)",
-    accent: "#1d7cff",
-    accentStrong: "#4c57ff",
-    accentGradient: ["#1d7cff", "#4c57ff"],
-    accentGradientAlt: ["#1d7cff", "#4c57ff"],
-    accentSoft: "rgba(29, 124, 255, 0.14)",
-    accentBorder: "rgba(29, 124, 255, 0.44)",
-    danger: "#dc2626",
-    dangerBorder: "rgba(220, 38, 38, 0.35)",
-    dangerSoft: "rgba(220, 38, 38, 0.12)",
-    warning: "#d97706",
-    warningBorder: "rgba(217, 119, 6, 0.34)",
-    warningSoft: "rgba(217, 119, 6, 0.16)",
-    success: "#16a34a",
-    successBorder: "rgba(22, 163, 74, 0.35)",
-    successSoft: "rgba(22, 163, 74, 0.18)",
-    link: "#1d7cff",
-    placeholder: "#92a3bf",
-    shadow: "#94a3b8",
-    statusBar: "dark",
-  },
-};
 
 function planLabel(plan) {
   const value = String(plan || "basic").toUpperCase();
   return value === "BUSINESS" ? "BUSINESS" : "BASIC";
 }
 
-function createStyles(theme, density = 'comfortable') {
-  return StyleSheet.create({
-  app: {
-    flex: 1,
-  },
-  safe: {
-    flex: 1,
-  },
-  flex: {
-    flex: 1,
-  },
-  loginScroll: {
-    flexGrow: 1,
-    padding: 20,
-    paddingVertical: 40,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  appScroll: {
-    paddingHorizontal: 20,
-    paddingTop: 30,
-    paddingBottom: 36,
-  },
-  logoWrapBase: {
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: theme.borderStrong,
-    backgroundColor: theme.surfaceHeader,
-    shadowColor: theme.shadow,
-    shadowOpacity: 0.7,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 8,
-  },
-  logoWrapBig: {
-    width: 90,
-    height: 90,
-    marginBottom: 16,
-  },
-  logoWrapSmall: {
-    width: 40,
-    height: 40,
-  },
-  logoWrapTiny: {
-    width: 32,
-    height: 32,
-  },
-  logoWrapTinyCompact: {
-    width: 28,
-    height: 28,
-  },
-  logoMarkBig: {
-    width: 48,
-    height: 48,
-    resizeMode: "contain",
-  },
-  logoMarkSmall: {
-    width: 22,
-    height: 22,
-    resizeMode: "contain",
-  },
-  logoMarkTiny: {
-    width: 18,
-    height: 18,
-    resizeMode: "contain",
-  },
-  logoMarkTinyCompact: {
-    width: 14,
-    height: 14,
-  },
-  splashContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 24,
-  },
-  splashPanel: {
-    width: "100%",
-    maxWidth: 420,
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: theme.border,
-    backgroundColor: theme.surfaceCard,
-    paddingVertical: 30,
-    paddingHorizontal: 28,
-    alignItems: "center",
-    shadowColor: theme.shadow,
-    shadowOpacity: 0.38,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 16 },
-    elevation: 10,
-  },
-  splashTitle: {
-    color: theme.text,
-    fontSize: 34,
-    fontWeight: "800",
-    letterSpacing: 0.4,
-    marginTop: 4,
-  },
-  splashSubtitle: {
-    marginTop: 8,
-    color: theme.textMuted,
-    fontSize: 13,
-    textAlign: "center",
-  },
-  splashLoaderRow: {
-    marginTop: 18,
-    width: "100%",
-    height: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: theme.border,
-    backgroundColor: theme.surfaceHeader,
-    overflow: "hidden",
-  },
-  splashLoaderBar: {
-    width: "42%",
-    height: "100%",
-    borderRadius: 999,
-    backgroundColor: theme.accent,
-  },
-  splashStatus: {
-    marginTop: 12,
-    color: theme.textMuted,
-    fontSize: 11,
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-  },
-  loginCard: {
-    width: "100%",
-    maxWidth: 420,
-    alignSelf: "center",
-    borderRadius: 30,
-    borderWidth: 1,
-    borderColor: theme.border,
-    padding: 30,
-    overflow: "hidden",
-    shadowColor: theme.shadow,
-    shadowOpacity: 0.45,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 16 },
-    elevation: 10,
-  },
-  loginCardGradient: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  loginGlowTop: {
-    position: "absolute",
-    left: -80,
-    top: -90,
-    width: 200,
-    height: 200,
-    borderRadius: 120,
-    backgroundColor: theme.glowTop,
-    opacity: 0.7,
-  },
-  loginGlowRight: {
-    position: "absolute",
-    right: -60,
-    top: 80,
-    width: 180,
-    height: 180,
-    borderRadius: 100,
-    backgroundColor: theme.glowRight,
-    opacity: 0.75,
-  },
-  loginContent: {
-    position: "relative",
-    zIndex: 2,
-  },
-  loginHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  loginTitle: {
-    color: theme.text,
-    fontSize: 26,
-    fontWeight: "800",
-    letterSpacing: 0.4,
-  },
-  loginSubtitle: {
-    color: theme.textMuted,
-    marginTop: 3,
-    fontSize: 13,
-  },
-  loginToolbar: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    marginBottom: 16,
-  },
-  loginHint: {
-    flex: 1,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: theme.borderLight,
-    backgroundColor: theme.surfaceSoft,
-    padding: 11,
-    marginRight: 10,
-  },
-  loginHintText: {
-    color: theme.textMuted,
-    fontSize: 12,
-  },
-  languageButton: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: theme.borderStrong,
-    backgroundColor: theme.surfaceHeader,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    marginTop: 10,
-  },
-  languageButtonText: {
-    color: theme.text,
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  fieldLabel: {
-    color: theme.textMuted,
-    fontSize: 12,
-    marginBottom: 6,
-  },
-  input: {
-    height: 48,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: theme.inputBorder,
-    backgroundColor: theme.inputBg,
-    color: theme.text,
-    marginBottom: 12,
-  },
-  passwordRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  passwordInput: {
-    flex: 1,
-    marginBottom: 0,
-    marginRight: 10,
-  },
-  passwordToggle: {
-    height: 48,
-    minWidth: 56,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: theme.inputBorder,
-    backgroundColor: theme.surfaceSoft,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 10,
-  },
-  passwordToggleText: {
-    color: theme.text,
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  loginMessage: {
-    marginTop: 12,
-    fontSize: 12,
-    color: theme.danger,
-    padding: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: theme.dangerBorder,
-    backgroundColor: theme.dangerSoft,
-  },
-  loginButtonWrap: {
-    borderRadius: 999,
-    overflow: "hidden",
-    marginTop: 12,
-  },
-  loginButton: {
-    height: 52,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  loginButtonText: {
-    color: theme.textInverse,
-    fontWeight: "800",
-    fontSize: 15,
-    letterSpacing: 0.4,
-  },
-  loginSignup: {
-    marginTop: 16,
-  },
-  loginSignupText: {
-    color: theme.textMuted,
-    fontSize: 12,
-  },
-  loginSignupLink: {
-    color: theme.link,
-    fontSize: 12,
-    marginTop: 6,
-  },
-  appHeader: {
-    paddingHorizontal: 18,
-    paddingTop: 20,
-    paddingBottom: 18,
-    width: "100%",
-    maxWidth: 520,
-    alignSelf: "center",
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: theme.border,
-    backgroundColor: theme.surfaceHeader,
-    marginBottom: 20,
-    overflow: "hidden",
-    position: "relative",
-  },
-  appHeaderCompact: {
-    paddingHorizontal: 16,
-    paddingTop: 18,
-    paddingBottom: 16,
-  },
-  appHeaderGradient: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  appHeaderGlow: {
-    position: "absolute",
-    right: -40,
-    top: -50,
-    width: 140,
-    height: 140,
-    borderRadius: 999,
-    backgroundColor: theme.glowRight,
-    opacity: 0.45,
-  },
-  appHeaderTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-start",
-  },
-  appHeaderTopCompact: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-start",
-  },
-  appHeaderLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexShrink: 1,
-  },
-  appHeaderActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    marginTop: 12,
-    alignSelf: "flex-start",
-  },
-  appHeaderActionsCompact: {
-    marginTop: 10,
-  },
-  appBrand: {
-    marginLeft: 10,
-    flexShrink: 1,
-  },
-  appBrandCompact: {
-    marginLeft: 8,
-  },
-  appTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  appTitle: {
-    color: theme.text,
-    fontSize: 16,
-    letterSpacing: 0.6,
-    fontWeight: "600",
-  },
-  appTitleCompact: {
-    fontSize: 14,
-  },
-  statusDotWrap: {
-    width: 12,
-    height: 12,
-    marginLeft: 8,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 999,
-    backgroundColor: theme.accent,
-  },
-  statusPulse: {
-    position: "absolute",
-    width: 12,
-    height: 12,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: theme.accent,
-  },
-  appSubtitle: {
-    color: theme.textMuted,
-    fontSize: 11,
-    flexWrap: "wrap",
-  },
-  appSubtitleCompact: {
-    fontSize: 10,
-  },
-  appHeaderBottom: {
-    marginTop: 14,
-  },
-  userPill: {
-    alignSelf: "flex-start",
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 999,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    backgroundColor: theme.surfaceHeader,
-    borderWidth: 1,
-    borderColor: theme.borderStrong,
-  },
-  userPillCompact: {
-    paddingVertical: 5,
-    paddingHorizontal: 8,
-  },
-  userName: {
-    color: theme.text,
-    fontSize: 12,
-    fontWeight: "600",
-    marginRight: 8,
-  },
-  planBadge: {
-    paddingVertical: 2,
-    paddingHorizontal: 6,
-    borderRadius: 999,
-    backgroundColor: theme.accentSoft,
-  },
-  planBadgeText: {
-    color: theme.accent,
-    fontSize: 10,
-    letterSpacing: 0.6,
-    fontWeight: "700",
-  },
-  iconButton: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: theme.borderStrong,
-    backgroundColor: theme.surfaceHeader,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    marginRight: 8,
-    marginTop: 6,
-  },
-  iconButtonCompact: {
-    paddingVertical: 5,
-    paddingHorizontal: 10,
-  },
-  iconButtonContent: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  iconButtonIcon: {
-    marginRight: 6,
-    fontSize: 12,
-    color: theme.accent,
-  },
-  iconButtonIconCompact: {
-    fontSize: 10,
-  },
-  iconButtonFirst: {
-    marginLeft: 0,
-  },
-  iconButtonText: {
-    color: theme.text,
-    fontSize: 11,
-    fontWeight: "600",
-  },
-  iconButtonTextCompact: {
-    fontSize: 10,
-  },
-  card: {
-    backgroundColor: theme.surfaceCard,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: theme.border,
-    padding: 16,
-    marginBottom: 16,
-    width: "100%",
-    maxWidth: 520,
-    alignSelf: "center",
-    shadowColor: theme.shadow,
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 6,
-  },
-  cardTitle: {
-    color: theme.text,
-    fontSize: 15,
-    fontWeight: "600",
-    marginBottom: 10,
-  },
-  mutedText: {
-    color: theme.textMuted,
-  },
-  smallText: {
-    fontSize: 12,
-  },
-  kpiGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-  },
-  kpiItem: {
-    width: "48%",
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: theme.border,
-    backgroundColor: theme.surfaceCardAlt,
-    padding: 12,
-    marginBottom: 10,
-  },
-  kpiLabel: {
-    color: theme.textMuted,
-    fontSize: 11,
-  },
-  kpiValue: {
-    marginTop: 4,
-    color: theme.text,
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  totpRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 8,
-  },
-  totpActions: {
-    marginTop: 10,
-    alignSelf: "flex-start",
-  },
-  totpHint: {
-    marginTop: 6,
-  },
-  pillOn: {
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 999,
-    backgroundColor: theme.successSoft,
-    marginRight: 8,
-  },
-  pillOff: {
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 999,
-    backgroundColor: theme.dangerSoft,
-    marginRight: 8,
-  },
-  pillText: {
-    fontSize: 11,
-    color: theme.text,
-    fontWeight: "700",
-  },
-  deviceSyncPanel: {
-    flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 12,
-    padding: 14, marginVertical: 16, borderRadius: 14,
-    backgroundColor: theme.surfaceSoft, borderWidth: 1, borderColor: theme.border,
-  },
-  invoiceFilters: { gap: 8, paddingVertical: 12 },
-  filterChip: {
-    minHeight: 44, paddingHorizontal: 14, justifyContent: "center",
-    borderRadius: 22, borderWidth: 1, borderColor: theme.border,
-  },
-  filterChipActive: { backgroundColor: theme.surface, borderColor: theme.accent },
-  invoiceEmpty: { padding: 24, gap: 16, alignItems: "center", borderRadius: 16, backgroundColor: theme.surface },
-  invoiceHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  invoiceActions: {
-    flexDirection: "row",
-  },
-  mailSyncPanel: {
-    marginBottom: 14,
-    padding: 12,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: theme.borderLight,
-    backgroundColor: theme.surfaceCardAlt,
-  },
-  mailSyncHeader: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-  },
-  mailSyncInfo: {
-    flex: 1,
-    paddingRight: 10,
-  },
-  mailSyncTitle: {
-    color: theme.text,
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  mailSyncDesc: {
-    color: theme.textMuted,
-    fontSize: 11,
-    marginTop: 4,
-    lineHeight: 16,
-  },
-  mailSyncStatus: {
-    marginTop: 8,
-  },
-  mailProviders: {
-    marginTop: 10,
-  },
-  mailProviderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: theme.borderLight,
-    backgroundColor: theme.surfaceSoft,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    marginBottom: 8,
-  },
-  mailProviderLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-    paddingRight: 8,
-  },
-  mailProviderBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 9,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 10,
-  },
-  mailProviderBadgeGmail: {
-    backgroundColor: "rgba(234, 88, 12, 0.2)",
-    borderWidth: 1,
-    borderColor: "rgba(253, 186, 116, 0.35)",
-  },
-  mailProviderBadgeOutlook: {
-    backgroundColor: "rgba(59, 130, 246, 0.2)",
-    borderWidth: 1,
-    borderColor: "rgba(147, 197, 253, 0.35)",
-  },
-  mailProviderBadgeGeneric: {
-    backgroundColor: "rgba(99, 102, 241, 0.2)",
-    borderWidth: 1,
-    borderColor: "rgba(165, 180, 252, 0.35)",
-  },
-  mailProviderBadgeText: {
-    color: theme.text,
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  mailProviderName: {
-    color: theme.text,
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  mailProviderStatus: {
-    color: theme.textMuted,
-    fontSize: 11,
-    marginTop: 2,
-  },
-  mailProviderEmail: {
-    color: theme.text,
-    fontSize: 11,
-    marginTop: 2,
-  },
-  mailProviderActions: {
-    marginLeft: 6,
-  },
-  mailConnectProviderRow: {
-    marginTop: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: theme.borderLight,
-    backgroundColor: theme.surfaceSoft,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  mailConnectProviderValue: {
-    color: theme.text,
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  ghostButton: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: theme.borderStrong,
-    backgroundColor: theme.surfaceHeader,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    marginRight: 8,
-    opacity: 0.9,
-  },
-  ghostButtonDanger: {
-    borderColor: theme.dangerBorder,
-    backgroundColor: theme.dangerSoft,
-  },
-  ghostButtonText: {
-    color: theme.text,
-    fontSize: 11,
-  },
-  ghostButtonTextDanger: {
-    color: theme.danger,
-  },
-  primarySmall: {
-    borderRadius: 999,
-    overflow: "hidden",
-  },
-  primarySmallInner: {
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-  },
-  primarySmallText: {
-    color: theme.textInverse,
-    fontSize: 11,
-    fontWeight: "600",
-  },
-  loadingBlock: {
-    marginTop: 10,
-  },
-  invoiceRow: {
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: theme.borderLight,
-    backgroundColor: theme.rowBg,
-    padding: density === 'compact' ? 10 : 16,
-    marginBottom: 10,
-  },
-  invoiceRowHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  invoiceCompany: {
-    color: theme.text,
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  invoiceMeta: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginTop: 6,
-  },
-  invoiceMetaText: {
-    color: theme.textMuted,
-    fontSize: 11,
-    marginRight: 10,
-  },
-  invoiceAmounts: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 8,
-  },
-  invoiceAmount: {
-    color: theme.text,
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  invoiceDue: {
-    color: theme.textMuted,
-    fontSize: 11,
-  },
-  invoiceRowFooter: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    marginTop: 8,
-  },
-  statusBadge: {
-    paddingVertical: 3,
-    paddingHorizontal: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  statusPaid: {
-    backgroundColor: theme.successSoft,
-    borderColor: theme.successBorder,
-  },
-  statusUnpaid: {
-    backgroundColor: theme.warningSoft,
-    borderColor: theme.warningBorder,
-  },
-  statusOverdue: {
-    backgroundColor: theme.dangerSoft,
-    borderColor: theme.dangerBorder,
-  },
-  statusText: {
-    fontSize: 10,
-    fontWeight: "700",
-  },
-  statusTextPaid: {
-    color: theme.success,
-  },
-  statusTextUnpaid: {
-    color: theme.warning,
-  },
-  statusTextOverdue: {
-    color: theme.danger,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: theme.overlay,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 16,
-  },
-  modalPanel: {
-    width: "100%",
-    maxWidth: 520,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: theme.border,
-    backgroundColor: theme.surface,
-    padding: 16,
-  },
-  settingsPanel: {
-    width: "100%",
-    maxWidth: 480,
-    maxHeight: "88%",
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: theme.border,
-    backgroundColor: theme.surface,
-    padding: 16,
-  },
-  settingsScroll: {
-    width: "100%",
-  },
-  settingsScrollContent: {
-    paddingBottom: 12,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 8,
-  },
-  modalTitle: {
-    color: theme.text,
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  modalClose: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: theme.border,
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-  },
-  modalCloseText: {
-    color: theme.text,
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  modalSection: {
-    marginTop: 12,
-  },
-  sectionTitle: {
-    color: theme.text,
-    fontSize: 13,
-    fontWeight: "600",
-    marginBottom: 8,
-  },
-  chipRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginBottom: 6,
-  },
-  chip: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: theme.borderStrong,
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    marginRight: 8,
-    marginBottom: 6,
-  },
-  chipActive: {
-    backgroundColor: theme.accentSoft,
-    borderColor: theme.accentBorder,
-  },
-  chipText: {
-    color: theme.textMuted,
-    fontSize: 11,
-  },
-  chipTextActive: {
-    color: theme.accent,
-    fontSize: 11,
-    fontWeight: "600",
-  },
-  settingsRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-  },
-  ghostButtonWide: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: theme.borderStrong,
-    backgroundColor: theme.surfaceHeader,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  linkButton: {
-    marginTop: 8,
-  },
-  linkButtonText: {
-    color: theme.link,
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  profilePlanRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginVertical: 10,
-  },
-  profilePlanLabel: {
-    color: theme.textMuted,
-    fontSize: 12,
-  },
-  primaryButton: {
-    borderRadius: 999,
-    backgroundColor: theme.accentStrong,
-    paddingVertical: 10,
-    alignItems: "center",
-    marginTop: 10,
-  },
-  primaryButtonText: {
-    color: theme.textInverse,
-    fontWeight: "700",
-    fontSize: 13,
-  },
-  dangerButton: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: theme.dangerBorder,
-    backgroundColor: theme.dangerSoft,
-    paddingVertical: 10,
-    alignItems: "center",
-    marginTop: 10,
-  },
-  dangerButtonText: {
-    color: theme.danger,
-    fontWeight: "700",
-    fontSize: 13,
-  },
-  qrWrap: {
-    marginTop: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  qrCard: {
-    padding: 12,
-    borderRadius: 16,
-    backgroundColor: "#ffffff",
-  },
-  secretBox: {
-    marginTop: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: theme.borderLight,
-    backgroundColor: theme.surfaceSoft,
-    padding: 12,
-  },
-  secretLabel: {
-    color: theme.textMuted,
-    fontSize: 11,
-    marginBottom: 6,
-  },
-  secretValue: {
-    color: theme.text,
-    fontSize: 13,
-    fontWeight: "600",
-    letterSpacing: 0.6,
-  },
-  modalScroll: {
-    maxHeight: 420,
-  },
-  modalScrollContent: {
-    paddingBottom: 10,
-  },
-  statusRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginBottom: 12,
-  },
-  statusChip: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: theme.border,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  statusChipActive: {
-    backgroundColor: theme.accentSoft,
-    borderColor: theme.accentBorder,
-  },
-  statusChipText: {
-    color: theme.textMuted,
-    fontSize: 11,
-    fontWeight: "600",
-  },
-  statusChipTextActive: {
-    color: theme.accent,
-  },
-  modalFooter: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 8,
-  },
-  modalFooterRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 12,
-  },
-  errorText: {
-    marginTop: 6,
-    color: theme.danger,
-    fontSize: 12,
-  },
-  languagePanel: {
-    width: "100%",
-    maxWidth: 340,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: theme.border,
-    backgroundColor: theme.surface,
-    padding: 16,
-  },
-  languageScroll: {
-    maxHeight: 360,
-  },
-  languageScrollContent: {
-    paddingBottom: 4,
-  },
-  languageOption: {
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: theme.borderLight,
-    backgroundColor: theme.surfaceHeader,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    marginBottom: 8,
-  },
-  languageOptionActive: {
-    borderColor: theme.accentBorder,
-    backgroundColor: theme.accentSoft,
-  },
-  languageOptionText: {
-    color: theme.textSoft,
-    fontSize: 12,
-  },
-  languageOptionTextActive: {
-    color: theme.accent,
-    fontWeight: "700",
-  },
-  });
-}
 
 const mailSyncI18n = {
   en: {
@@ -3913,12 +2735,12 @@ export default function App() {
   const splashScale = useRef(new Animated.Value(0.98)).current;
   const statusPulse = useRef(new Animated.Value(0)).current;
 
-  const { width } = useWindowDimensions();
+  const { width, fontScale } = useWindowDimensions();
   const systemScheme = useColorScheme();
   const resolvedMode =
     themeMode === "auto" ? (systemScheme === "light" ? "light" : "dark") : themeMode;
   const theme = THEMES[resolvedMode] || THEMES.dark;
-  const styles = useMemo(() => createStyles(theme, density), [theme, density]);
+  const styles = useMemo(() => createStyles(theme, density, width, fontScale), [theme, density, width, fontScale]);
   useEffect(() => {
     let active = true;
     void AsyncStorage.getItem('df_density').then(value => { if (active && value === 'compact') setDensity(value); }).catch(() => {});
@@ -5520,6 +4342,8 @@ export default function App() {
                     <Text style={styles.modalTitle}>{t("settings_language")}</Text>
                     <TouchableOpacity
                       style={styles.modalClose}
+                      accessibilityRole="button"
+                      accessibilityLabel={t("modal_close")}
                       onPress={closeLanguagePicker}
                     >
                       <Text style={styles.modalCloseText}>X</Text>
@@ -5701,12 +4525,12 @@ export default function App() {
           ) : null}
 
           <View style={styles.card}>
-            <View style={styles.invoiceHeader}>
+            <View style={styles.pulseHeader}>
               <View>
                 <Text style={styles.cardTitle}>{t("pulse_title")}</Text>
                 <Text style={[styles.mutedText, styles.smallText]}>{t("privacy_desc")}</Text>
               </View>
-              <View style={styles.modalFooterRow}>
+              <View style={styles.pulseActions}>
                 <TouchableOpacity style={styles.ghostButton} onPress={openSourceHub}>
                   <Text style={styles.ghostButtonText}>{t("inbox_mesh")}</Text>
                 </TouchableOpacity>
@@ -5750,7 +4574,7 @@ export default function App() {
                   <View style={[styles.mailProviderBadge, styles.mailProviderBadgeGeneric]}>
                     <Text style={styles.mailProviderBadgeText}>↻</Text>
                   </View>
-                  <View>
+                  <View style={styles.mailProviderCopy}>
                     <Text style={styles.mailProviderName}>{invoice.company || t("invoice_unknown_company")}</Text>
                     <Text style={styles.mailProviderStatus}>
                       {invoice.intelligence.recurrence.nextExpectedAt?.toLocaleDateString(locale)} · {t("cadence_" + invoice.intelligence.recurrence.cadence)}
@@ -5942,7 +4766,7 @@ export default function App() {
                             {badgeLetter}
                           </Text>
                         </View>
-                        <View>
+                        <View style={styles.mailProviderCopy}>
                           <Text style={styles.mailProviderName}>
                             {providerName}
                           </Text>
@@ -5976,7 +4800,7 @@ export default function App() {
                   <View style={[styles.mailProviderBadge, styles.mailProviderBadgeGeneric]}>
                     <Text style={styles.mailProviderBadgeText}>P</Text>
                   </View>
-                  <View>
+                  <View style={styles.mailProviderCopy}>
                     <Text style={styles.mailProviderName}>{t("phone_title")}</Text>
                     <Text style={styles.mailProviderStatus}>{t("phone_desc")}</Text>
                   </View>
@@ -6079,7 +4903,7 @@ export default function App() {
               <View style={styles.modalPanel}>
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>{t("action_title")}</Text>
-                  <TouchableOpacity style={styles.modalClose} onPress={() => setActionInvoice(null)}>
+                  <TouchableOpacity style={styles.modalClose} accessibilityRole="button" accessibilityLabel={t("modal_close")} onPress={() => setActionInvoice(null)}>
                     <Text style={styles.modalCloseText}>X</Text>
                   </TouchableOpacity>
                 </View>
@@ -6099,7 +4923,7 @@ export default function App() {
                   <View style={styles.mailProviderRow}>
                     <View style={styles.mailProviderLeft}>
                       <View style={[styles.mailProviderBadge, styles.mailProviderBadgeGeneric]}><Text style={styles.mailProviderBadgeText}>✓</Text></View>
-                      <View>
+                      <View style={styles.mailProviderCopy}>
                         <Text style={styles.mailProviderName}>{t("evidence_confidence")}</Text>
                         <Text style={styles.mailProviderStatus}>{selectedIntelligence?.intelligence.evidence.confidence || 0}%</Text>
                       </View>
@@ -6109,7 +4933,7 @@ export default function App() {
                     <View key={`${item.type}-${index}`} style={styles.mailProviderRow}>
                       <View style={styles.mailProviderLeft}>
                         <View style={[styles.mailProviderBadge, styles.mailProviderBadgeGeneric]}><Text style={styles.mailProviderBadgeText}>{item.verified ? "✓" : "!"}</Text></View>
-                        <View>
+                        <View style={styles.mailProviderCopy}>
                           <Text style={styles.mailProviderName}>{t("evidence_source")}</Text>
                           <Text style={styles.mailProviderStatus}>{sensitivePreviewsHidden ? t("privacy_hidden") : item.label}</Text>
                         </View>
@@ -6145,7 +4969,7 @@ export default function App() {
               <View style={styles.modalPanel}>
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>{t("inbox_mesh")}</Text>
-                  <TouchableOpacity style={styles.modalClose} onPress={() => setSourceHubVisible(false)}><Text style={styles.modalCloseText}>X</Text></TouchableOpacity>
+                  <TouchableOpacity style={styles.modalClose} accessibilityRole="button" accessibilityLabel={t("modal_close")} onPress={() => setSourceHubVisible(false)}><Text style={styles.modalCloseText}>X</Text></TouchableOpacity>
                 </View>
                 <Text style={[styles.mutedText, styles.smallText]}>{t("inbox_mesh_desc")}</Text>
                 <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent}>
@@ -6165,7 +4989,7 @@ export default function App() {
                     >
                       <View style={styles.mailProviderLeft}>
                         <View style={[styles.mailProviderBadge, styles.mailProviderBadgeGeneric]}><Text style={styles.mailProviderBadgeText}>{provider.name.charAt(0)}</Text></View>
-                        <View>
+                        <View style={styles.mailProviderCopy}>
                           <Text style={styles.mailProviderName}>{provider.name}</Text>
                           <Text style={styles.mailProviderStatus}>{provider.mode === "oauth" ? "OAuth" : t("forwarding_address")}</Text>
                         </View>
@@ -6195,7 +5019,7 @@ export default function App() {
               <View style={styles.modalPanel}>
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>{t("privacy_vault")}</Text>
-                  <TouchableOpacity style={styles.modalClose} onPress={() => setPrivacyVisible(false)}><Text style={styles.modalCloseText}>X</Text></TouchableOpacity>
+                  <TouchableOpacity style={styles.modalClose} accessibilityRole="button" accessibilityLabel={t("modal_close")} onPress={() => setPrivacyVisible(false)}><Text style={styles.modalCloseText}>X</Text></TouchableOpacity>
                 </View>
                 <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent}>
                   <Text style={[styles.mutedText, styles.smallText]}>{t("privacy_desc")}</Text>
@@ -6233,7 +5057,7 @@ export default function App() {
               <View style={styles.settingsPanel}>
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>{t("settings_title")}</Text>
-                  <TouchableOpacity style={styles.modalClose} onPress={closeSettings}>
+                  <TouchableOpacity style={styles.modalClose} accessibilityRole="button" accessibilityLabel={t("modal_close")} onPress={closeSettings}>
                     <Text style={styles.modalCloseText}>X</Text>
                   </TouchableOpacity>
                 </View>
@@ -6327,7 +5151,7 @@ export default function App() {
                               {providerDisplayName(provider, t).charAt(0).toUpperCase()}
                             </Text>
                           </View>
-                          <View>
+                          <View style={styles.mailProviderCopy}>
                             <Text style={styles.mailProviderName}>
                               {providerDisplayName(provider, t)}
                             </Text>
@@ -6514,7 +5338,7 @@ export default function App() {
               <View style={styles.modalPanel}>
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>{t("profile_title")}</Text>
-                  <TouchableOpacity style={styles.modalClose} onPress={closeProfile}>
+                  <TouchableOpacity style={styles.modalClose} accessibilityRole="button" accessibilityLabel={t("modal_close")} onPress={closeProfile}>
                     <Text style={styles.modalCloseText}>X</Text>
                   </TouchableOpacity>
                 </View>
@@ -6601,6 +5425,8 @@ export default function App() {
                   </Text>
                   <TouchableOpacity
                     style={styles.modalClose}
+                    accessibilityRole="button"
+                    accessibilityLabel={t("modal_close")}
                     onPress={() => setMailConnectVisible(false)}
                   >
                     <Text style={styles.modalCloseText}>X</Text>
@@ -6684,6 +5510,8 @@ export default function App() {
                   <Text style={styles.modalTitle}>{t("reports_title")}</Text>
                   <TouchableOpacity
                     style={styles.modalClose}
+                    accessibilityRole="button"
+                    accessibilityLabel={t("modal_close")}
                     onPress={() => setReportVisible(false)}
                   >
                     <Text style={styles.modalCloseText}>X</Text>
@@ -6746,6 +5574,8 @@ export default function App() {
                   <Text style={styles.modalTitle}>{t("invoice_modal_title")}</Text>
                   <TouchableOpacity
                     style={styles.modalClose}
+                    accessibilityRole="button"
+                    accessibilityLabel={t("modal_close")}
                     onPress={closeInvoiceModal}
                   >
                     <Text style={styles.modalCloseText}>X</Text>
@@ -6909,6 +5739,8 @@ export default function App() {
                   <Text style={styles.modalTitle}>{t("settings_language")}</Text>
                   <TouchableOpacity
                     style={styles.modalClose}
+                    accessibilityRole="button"
+                    accessibilityLabel={t("modal_close")}
                     onPress={closeLanguagePicker}
                   >
                     <Text style={styles.modalCloseText}>X</Text>

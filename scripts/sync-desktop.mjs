@@ -4,7 +4,7 @@ import path from 'node:path';
 // Release builds use Windows as the canonical cross-platform Electron source.
 const root = path.resolve(import.meta.dirname, '..', 'DueFlux_app_desktop');
 const files = ['main.js', 'preload.js', 'local-vault.cjs', 'package.json', 'package-lock.json',
-  'renderer/app.js', 'renderer/index.html', 'renderer/style.css',
+  'renderer/app.js', 'renderer/index.html', 'renderer/style.css', 'renderer/ui.css',
   'renderer/feature-locales.js', 'renderer/product-intelligence.js', 'renderer/offline-queue.js',
   'renderer/dialog-accessibility.js',
   'renderer/protected-storage.js',
